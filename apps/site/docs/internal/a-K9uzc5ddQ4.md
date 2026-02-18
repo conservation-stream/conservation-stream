@@ -1,5 +1,3 @@
-![Caption!](/api/attachments.redirect?id=6864bcb1-2dfb-4deb-91d9-7e66fa39dfcd " =3516x604")
+![](/api/attachments.redirect?id=8d9ea1d4-6333-4ec5-b0a8-7c15c3aebdee " =551x602")
 
-[Video :) 3172x1720](/api/attachments.redirect?id=7de8883f-cc63-4f62-afa7-6e49b4aabb38)
-
- ![](/api/attachments.redirect?id=554cb3f1-6e16-4f70-94dd-665b3fcd5872 " =551x602")
+ ![](/api/attachments.redirect?id=2f56ebb6-3e06-4e19-ad5e-c72cbec936f7 " =325x238")
