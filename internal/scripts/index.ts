@@ -10,6 +10,16 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+interface WorkflowMatrixEntry {
+  matrix_key: string;
+  matrix_values_json: string;
+  runner?: string;
+}
+
+interface WorkflowMatrix {
+  include: WorkflowMatrixEntry[];
+}
+
 /** Walk up from dir looking for build.action.ts + deploy.action.ts */
 const findActionDir = (dir: string, root: string): string | null => {
   if (
@@ -22,12 +32,18 @@ const findActionDir = (dir: string, root: string): string | null => {
   return parent === root ? null : findActionDir(parent, root);
 };
 
-/** Import build.action.ts and extract matrix export (build/deploy no-op due to MATRIX_ONLY) */
-const getMatrix = async (filePath: string): Promise<MatrixConfig | null> => {
+/** Import build.action.ts and extract explicit build_matrix or a MatrixConfig export. */
+const getBuildMatrix = async (filePath: string): Promise<WorkflowMatrix | null> => {
   process.env.MATRIX_ONLY = "1";
   try {
     const mod = await import(pathToFileURL(filePath).href);
-    return mod.matrix ?? null;
+    if (mod.build_matrix) {
+      return mod.build_matrix as WorkflowMatrix;
+    }
+    if (mod.matrix) {
+      return expandMatrix(mod.matrix as MatrixConfig);
+    }
+    return null;
   } catch {
     return null;
   } finally {
@@ -36,7 +52,7 @@ const getMatrix = async (filePath: string): Promise<MatrixConfig | null> => {
 };
 
 /** Cartesian product of matrix values → GH Actions format */
-const expandMatrix = (matrix: MatrixConfig) => {
+const expandMatrix = (matrix: MatrixConfig): WorkflowMatrix => {
   let combos: Record<string, string>[] = [{}];
   for (const key of Object.keys(matrix)) {
     combos = combos.flatMap((combo) =>
@@ -71,10 +87,9 @@ await before(async (env) => {
 
   const include = await Promise.all(
     [...packages].map(async ([dir, name]) => {
-      const matrix = await getMatrix(path.join(dir, "build.action.ts"));
+      const build_matrix = await getBuildMatrix(path.join(dir, "build.action.ts"));
 
-      if (matrix) {
-        const build_matrix = expandMatrix(matrix);
+      if (build_matrix) {
         console.log(`${name}: ${build_matrix.include.length} matrix jobs`);
         return { dir, name, build_matrix };
       }

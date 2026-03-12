@@ -1,4 +1,4 @@
-import { build, type MatrixConfig } from '@conservation-stream/internal-actions';
+import { build } from '@conservation-stream/internal-actions';
 import { $ } from 'zx';
 
 export interface Payload {
@@ -11,9 +11,26 @@ type Artifacts = never;
 
 const BUILDER_NAME = 'cstream-cli-build';
 
-export const matrix = {
-  arch: ['amd64', 'arm64']
-} satisfies MatrixConfig;
+export const build_matrix = {
+  include: [
+    {
+      matrix_key: 'amd64',
+      matrix_values_json: JSON.stringify({
+        arch: 'amd64',
+        runner: 'ubuntu-latest'
+      }),
+      runner: 'ubuntu-latest'
+    },
+    {
+      matrix_key: 'arm64',
+      matrix_values_json: JSON.stringify({
+        arch: 'arm64',
+        runner: 'ubuntu-latest'
+      }),
+      runner: 'ubuntu-latest'
+    }
+  ]
+} as const;
 
 const getImageName = (repository: string) => {
   const [owner] = repository.toLowerCase().split('/');
@@ -31,7 +48,9 @@ const ensureArch = (arch: string | undefined) => {
     throw new Error('matrix.arch is required');
   }
 
-  if (!matrix.arch.includes(arch)) {
+  const supportedArchitectures = build_matrix.include.map(entry => JSON.parse(entry.matrix_values_json).arch as string);
+
+  if (!supportedArchitectures.includes(arch)) {
     throw new Error(`Unsupported architecture: ${arch}`);
   }
 

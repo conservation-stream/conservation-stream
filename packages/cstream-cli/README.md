@@ -28,8 +28,3 @@ go test ./...
 Releases are handled in the repo's shared GitHub Actions CI pattern by `build.action.ts` and `deploy.action.ts`.
 
 The build jobs publish per-architecture container images, then `deploy.action.ts` creates the GitHub Release and the final multi-arch tags from the package `Dockerfile`.
-
-The image is published to `ghcr.io/<owner>/mediamtx-cstream` with:
-
-- the current release ref name, for example `v0.1.0`
-- `latest`
