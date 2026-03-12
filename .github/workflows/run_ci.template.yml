@@ -19,7 +19,7 @@ on:
         default: '{"include":[{"matrix_key":"default","matrix_values_json":"{}"}]}'
 
 permissions:
-  contents: write
+  contents: read
   actions: write
   packages: write
 
