@@ -25,9 +25,9 @@ export const build_matrix = {
       matrix_key: 'arm64',
       matrix_values_json: JSON.stringify({
         arch: 'arm64',
-        runner: 'ubuntu-latest'
+        runner: 'ubuntu-24.04-arm'
       }),
-      runner: 'ubuntu-latest'
+      runner: 'ubuntu-24.04-arm'
     }
   ]
 } as const;
