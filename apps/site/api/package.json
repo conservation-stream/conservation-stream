@@ -1,0 +1,28 @@
+{
+	"name": "@conservation-stream/site-api",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"start": "wrangler dev",
+		"test": "vitest",
+		"cf-typegen": "wrangler types"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.12.4",
+		"@types/node": "^25.3.1",
+		"drizzle-kit": "^0.31.9",
+		"typescript": "^5.5.2",
+		"vitest": "~3.2.0",
+		"wrangler": "^4.69.0"
+	},
+	"dependencies": {
+		"@better-auth/oauth-provider": "catalog:",
+		"@hono/standard-validator": "^0.2.2",
+		"better-auth": "catalog:",
+		"drizzle-orm": "^0.45.1",
+		"hono": "^4.11.7",
+		"postgres": "^3.4.8"
+	}
+}

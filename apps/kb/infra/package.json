@@ -1,7 +1,7 @@
 {
   "name": "@conservation-stream/kb-infra",
-  "type": "module",
   "private": true,
+  "type": "module",
   "main": "index.ts",
   "devDependencies": {
     "@conservation-stream/internal-pulumi": "workspace:*",
