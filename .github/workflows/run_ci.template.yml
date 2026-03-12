@@ -19,8 +19,9 @@ on:
         default: '{"include":[{"matrix_key":"default","matrix_values_json":"{}"}]}'
 
 permissions:
-  contents: read
+  contents: write
   actions: write
+  packages: write
 
 jobs:
   build:
@@ -114,6 +115,7 @@ jobs:
           ARTIFACTS_DIR: ${{ runner.temp }}/artifacts
           CI_NAME: ${{ inputs.name }}
           ENVIRONMENT: ${{ inputs.environment }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           node deploy.action.ts

@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 
-import { before, writeOutput, type MatrixConfig } from "@conservation-stream/internal-actions";
+import {
+  before,
+  writeOutput,
+  type MatrixConfig,
+} from "@conservation-stream/internal-actions";
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -8,7 +12,10 @@ import { pathToFileURL } from "node:url";
 
 /** Walk up from dir looking for build.action.ts + deploy.action.ts */
 const findActionDir = (dir: string, root: string): string | null => {
-  if (existsSync(path.join(dir, "build.action.ts")) && existsSync(path.join(dir, "deploy.action.ts"))) {
+  if (
+    existsSync(path.join(dir, "build.action.ts")) &&
+    existsSync(path.join(dir, "deploy.action.ts"))
+  ) {
     return dir;
   }
   const parent = path.dirname(dir);
@@ -32,10 +39,12 @@ const getMatrix = async (filePath: string): Promise<MatrixConfig | null> => {
 const expandMatrix = (matrix: MatrixConfig) => {
   let combos: Record<string, string>[] = [{}];
   for (const key of Object.keys(matrix)) {
-    combos = combos.flatMap(combo => matrix[key].map(v => ({ ...combo, [key]: v })));
+    combos = combos.flatMap((combo) =>
+      matrix[key].map((v) => ({ ...combo, [key]: v })),
+    );
   }
   return {
-    include: combos.map(c => ({
+    include: combos.map((c) => ({
       matrix_key: Object.values(c).join("-"),
       matrix_values_json: JSON.stringify(c),
     })),
@@ -48,7 +57,9 @@ await before(async (env) => {
     throw new Error("Missing event.before for determine-changes");
   }
 
-  const output = execSync(`pnpm -r --stream --filter "...[${baseSha}]" exec -- pwd`);
+  const output = execSync(
+    `pnpm -r --stream --filter "...[${baseSha}]" exec -- pwd`,
+  );
   const changed = output.toString("utf-8").split("\n").filter(Boolean);
 
   const packages = new Map<string, string>();
@@ -69,8 +80,11 @@ await before(async (env) => {
       }
 
       return { dir, name };
-    })
+    }),
   );
 
-  await writeOutput(env.GITHUB_OUTPUT, { count: include.length, matrix: { include } });
+  await writeOutput(env.GITHUB_OUTPUT, {
+    count: include.length,
+    matrix: { include },
+  });
 });

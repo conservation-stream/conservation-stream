@@ -1,0 +1,39 @@
+{
+  "name": "conservation",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "upgradePackages": true,
+      "username": "vscode"
+    },
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.24.3"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "24.13.0"
+    }
+  },
+  "remoteUser": "vscode",
+  "runArgs": [
+    "--init"
+  ],
+  "postCreateCommand": "corepack enable && pnpm install && cd packages/cstream-cli && go mod download",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        "ms-azuretools.vscode-containers"
+      ],
+      "settings": {
+        "go.useLanguageServer": true,
+        "go.toolsManagement.autoUpdate": true
+      }
+    }
+  }
+}

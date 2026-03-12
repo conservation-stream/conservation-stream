@@ -1,0 +1,13 @@
+{
+  "name": "@conservation-stream/cstream-cli",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@conservation-stream/internal-actions": "workspace:*",
+    "@types/node": "latest",
+    "zx": "^8.8.5"
+  }
+}

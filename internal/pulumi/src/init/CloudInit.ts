@@ -1,7 +1,7 @@
-import * as cloudinit from "@pulumi/cloudinit";
-import * as pulumi from "@pulumi/pulumi";
-import dedent from "dedent";
-import * as yaml from "yaml";
+import * as cloudinit from '@pulumi/cloudinit';
+import * as pulumi from '@pulumi/pulumi';
+import dedent from 'dedent';
+import * as yaml from 'yaml';
 
 interface Settings {
   docker: boolean;
@@ -61,17 +61,23 @@ export class CloudInit extends pulumi.ComponentResource {
     const content = yaml.stringify({
       package_update: true,
       write_files: this.writeFiles,
-      runcmd: this.runcmd,
+      runcmd: this.runcmd
     });
     const header = `#cloud-config`;
-    const userData = new cloudinit.Config(`${name}-userdata`, {
-      gzip: false,
-      base64Encode: false, // DO accepts plain user-data
-      parts: [{
-        contentType: "text/cloud-config",
-        content: `${header}\n${content}`,
-      }],
-    }, { parent: this });
+    const userData = new cloudinit.Config(
+      `${name}-userdata`,
+      {
+        gzip: false,
+        base64Encode: false, // DO accepts plain user-data
+        parts: [
+          {
+            contentType: 'text/cloud-config',
+            content: `${header}\n${content}`
+          }
+        ]
+      },
+      { parent: this }
+    );
     this.rendered = userData.rendered;
   }
 }

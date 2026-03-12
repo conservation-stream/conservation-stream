@@ -51,7 +51,7 @@ export type Development = {
     /**
      * Action to take when a change is detected: rebuild the container, sync files, restart the container, sync and restart, or sync and execute a command.
      */
-    action: "rebuild" | "sync" | "restart" | "sync+restart" | "sync+exec";
+    action: 'rebuild' | 'sync' | 'restart' | 'sync+restart' | 'sync+exec';
     /**
      * Target path in the container for sync operations.
      */
@@ -96,7 +96,7 @@ export type Development1 = {
     /**
      * Action to take when a change is detected: rebuild the container, sync files, restart the container, sync and restart, or sync and execute a command.
      */
-    action: "rebuild" | "sync" | "restart" | "sync+restart" | "sync+exec";
+    action: 'rebuild' | 'sync' | 'restart' | 'sync+restart' | 'sync+exec';
     /**
      * Target path in the container for sync operations.
      */
@@ -178,7 +178,7 @@ export type Deployment = {
     /**
      * Order of operations during rollbacks: 'stop-first' (default) or 'start-first'.
      */
-    order?: "start-first" | "stop-first";
+    order?: 'start-first' | 'stop-first';
     /**
      * This interface was referenced by `undefined`'s JSON-Schema definition
      * via the `patternProperty` "^x-".
@@ -212,7 +212,7 @@ export type Deployment = {
     /**
      * Order of operations during updates: 'stop-first' (default) or 'start-first'.
      */
-    order?: "start-first" | "stop-first";
+    order?: 'start-first' | 'stop-first';
     /**
      * This interface was referenced by `undefined`'s JSON-Schema definition
      * via the `patternProperty` "^x-".
@@ -462,7 +462,7 @@ export type Deployment1 = {
     /**
      * Order of operations during rollbacks: 'stop-first' (default) or 'start-first'.
      */
-    order?: "start-first" | "stop-first";
+    order?: 'start-first' | 'stop-first';
     /**
      * This interface was referenced by `undefined`'s JSON-Schema definition
      * via the `patternProperty` "^x-".
@@ -496,7 +496,7 @@ export type Deployment1 = {
     /**
      * Order of operations during updates: 'stop-first' (default) or 'start-first'.
      */
-    order?: "start-first" | "stop-first";
+    order?: 'start-first' | 'stop-first';
     /**
      * This interface was referenced by `undefined`'s JSON-Schema definition
      * via the `patternProperty` "^x-".
@@ -1420,7 +1420,7 @@ export interface Service {
   /**
    * Specify the cgroup namespace to join. Use 'host' to use the host's cgroup namespace, or 'private' to use a private cgroup namespace.
    */
-  cgroup?: "host" | "private";
+  cgroup?: 'host' | 'private';
   /**
    * Specify an optional parent cgroup for the container.
    */
@@ -1514,7 +1514,7 @@ export interface Service {
           /**
            * Condition to wait for. 'service_started' waits until the service has started, 'service_healthy' waits until the service is healthy (as defined by its healthcheck), 'service_completed_successfully' waits until the service has completed successfully.
            */
-          condition: "service_started" | "service_healthy" | "service_completed_successfully";
+          condition: 'service_started' | 'service_healthy' | 'service_completed_successfully';
           /**
            * This interface was referenced by `undefined`'s JSON-Schema definition
            * via the `patternProperty` "^x-".
@@ -1671,7 +1671,7 @@ export interface Service {
    * Define GPU devices to use. Can be set to 'all' to use all GPUs, or a list of specific GPU devices.
    */
   gpus?:
-    | "all"
+    | 'all'
     | {
         capabilities?: ListOfStrings5;
         /**
@@ -2044,7 +2044,7 @@ export interface Service {
         /**
          * The mount type: bind for mounting host directories, volume for named volumes, tmpfs for temporary filesystems, cluster for cluster volumes, npipe for named pipes, or image for mounting from an image.
          */
-        type: "bind" | "volume" | "tmpfs" | "cluster" | "npipe" | "image";
+        type: 'bind' | 'volume' | 'tmpfs' | 'cluster' | 'npipe' | 'image';
         /**
          * The source of the mount, a path on the host for a bind mount, a docker image reference for an image mount, or the name of a volume defined in the top-level volumes key. Not applicable for a tmpfs mount.
          */
@@ -2076,11 +2076,11 @@ export interface Service {
           /**
            * Recursively mount the source directory.
            */
-          recursive?: "enabled" | "disabled" | "writable" | "readonly";
+          recursive?: 'enabled' | 'disabled' | 'writable' | 'readonly';
           /**
            * SELinux relabeling options: 'z' for shared content, 'Z' for private unshared content.
            */
-          selinux?: "z" | "Z";
+          selinux?: 'z' | 'Z';
           /**
            * This interface was referenced by `undefined`'s JSON-Schema definition
            * via the `patternProperty` "^x-".

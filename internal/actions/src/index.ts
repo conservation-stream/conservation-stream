@@ -1,84 +1,85 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import { env } from "node:process";
-import superjson from "superjson";
-import { z } from "zod";
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { env } from 'node:process';
+import superjson from 'superjson';
+import { z } from 'zod';
 
-export const CoreGithubActionEnvironment = z.object({
-  // General / CI
-  GITHUB_ACTIONS: z.string(),
+export const CoreGithubActionEnvironment = z
+  .object({
+    // General / CI
+    GITHUB_ACTIONS: z.string(),
 
-  // Current step/action
-  GITHUB_ACTION: z.string(),
-  GITHUB_ACTION_PATH: z.string().optional(), // composite actions only
-  GITHUB_ACTION_REPOSITORY: z.string(),
+    // Current step/action
+    GITHUB_ACTION: z.string(),
+    GITHUB_ACTION_PATH: z.string().optional(), // composite actions only
+    GITHUB_ACTION_REPOSITORY: z.string(),
 
-  // Actor
-  GITHUB_ACTOR: z.string(),
-  GITHUB_ACTOR_ID: z.string().optional(),
-  GITHUB_TRIGGERING_ACTOR: z.string().optional(),
+    // Actor
+    GITHUB_ACTOR: z.string(),
+    GITHUB_ACTOR_ID: z.string().optional(),
+    GITHUB_TRIGGERING_ACTOR: z.string().optional(),
 
-  // API endpoints
-  GITHUB_API_URL: z.string(),
-  GITHUB_GRAPHQL_URL: z.string(),
-  GITHUB_SERVER_URL: z.string(),
+    // API endpoints
+    GITHUB_API_URL: z.string(),
+    GITHUB_GRAPHQL_URL: z.string(),
+    GITHUB_SERVER_URL: z.string(),
 
-  // Event
-  GITHUB_EVENT_NAME: z.string(),
-  GITHUB_EVENT_PATH: z.string(),
-  GITHUB_BASE_REF: z.string().optional(), // PR only
-  GITHUB_HEAD_REF: z.string().optional(), // PR only
+    // Event
+    GITHUB_EVENT_NAME: z.string(),
+    GITHUB_EVENT_PATH: z.string(),
+    GITHUB_BASE_REF: z.string().optional(), // PR only
+    GITHUB_HEAD_REF: z.string().optional(), // PR only
 
-  // Job / run
-  GITHUB_JOB: z.string(),
-  GITHUB_RUN_ID: z.string(),
-  GITHUB_RUN_NUMBER: z.string(),
-  GITHUB_RUN_ATTEMPT: z.string(),
-  GITHUB_RETENTION_DAYS: z.string(),
-  GITHUB_WORKFLOW: z.string(),
-  GITHUB_WORKFLOW_REF: z.string().optional(),
-  GITHUB_WORKFLOW_SHA: z.string().optional(),
+    // Job / run
+    GITHUB_JOB: z.string(),
+    GITHUB_RUN_ID: z.string(),
+    GITHUB_RUN_NUMBER: z.string(),
+    GITHUB_RUN_ATTEMPT: z.string(),
+    GITHUB_RETENTION_DAYS: z.string(),
+    GITHUB_WORKFLOW: z.string(),
+    GITHUB_WORKFLOW_REF: z.string().optional(),
+    GITHUB_WORKFLOW_SHA: z.string().optional(),
 
-  // Repo / ref / commit
-  GITHUB_REPOSITORY: z.string(),
-  GITHUB_REPOSITORY_ID: z.string().optional(),
-  GITHUB_REPOSITORY_OWNER: z.string(),
-  GITHUB_REPOSITORY_OWNER_ID: z.string().optional(),
-  GITHUB_REF: z.string(),
-  GITHUB_REF_NAME: z.string(),
-  GITHUB_REF_TYPE: z.string(),
-  GITHUB_REF_PROTECTED: z.string().optional(),
-  GITHUB_SHA: z.string(),
+    // Repo / ref / commit
+    GITHUB_REPOSITORY: z.string(),
+    GITHUB_REPOSITORY_ID: z.string().optional(),
+    GITHUB_REPOSITORY_OWNER: z.string(),
+    GITHUB_REPOSITORY_OWNER_ID: z.string().optional(),
+    GITHUB_REF: z.string(),
+    GITHUB_REF_NAME: z.string(),
+    GITHUB_REF_TYPE: z.string(),
+    GITHUB_REF_PROTECTED: z.string().optional(),
+    GITHUB_SHA: z.string(),
 
-  // Filesystem + workflow command files
-  GITHUB_WORKSPACE: z.string(),
-  GITHUB_ENV: z.string(),
-  GITHUB_OUTPUT: z.string(),
-  GITHUB_PATH: z.string(),
-  GITHUB_STEP_SUMMARY: z.string(),
+    // Filesystem + workflow command files
+    GITHUB_WORKSPACE: z.string(),
+    GITHUB_ENV: z.string(),
+    GITHUB_OUTPUT: z.string(),
+    GITHUB_PATH: z.string(),
+    GITHUB_STEP_SUMMARY: z.string(),
 
-  // Runner
-  RUNNER_NAME: z.string().optional(),
-  RUNNER_OS: z.string(),
-  RUNNER_ARCH: z.string(),
-  RUNNER_ENVIRONMENT: z.string().optional(),
-  RUNNER_DEBUG: z.string().optional(), // only set when debugging is enabled
-  RUNNER_TEMP: z.string(),
-  RUNNER_TOOL_CACHE: z.string(),
+    // Runner
+    RUNNER_NAME: z.string().optional(),
+    RUNNER_OS: z.string(),
+    RUNNER_ARCH: z.string(),
+    RUNNER_ENVIRONMENT: z.string().optional(),
+    RUNNER_DEBUG: z.string().optional(), // only set when debugging is enabled
+    RUNNER_TEMP: z.string(),
+    RUNNER_TOOL_CACHE: z.string(),
 
-  SECRETS: z.string().optional(),
-  ACTIONS_RUNTIME_TOKEN: z.string().optional(),
-  ACTIONS_CACHE_URL: z.string().optional(),
-}).loose();
+    SECRETS: z.string().optional(),
+    ACTIONS_RUNTIME_TOKEN: z.string().optional(),
+    ACTIONS_CACHE_URL: z.string().optional()
+  })
+  .loose();
 
 export type CoreGithubActionEnvironment = z.infer<typeof CoreGithubActionEnvironment>;
 
 export type MatrixConfig = Record<string, readonly string[]>;
 
-
 const parseMatrixEnv = (): Record<string, string> => {
   const json = env.MATRIX_VALUES_JSON;
-  if (!json || json === "{}") return {};
+  if (!json || json === '{}') return {};
   try {
     return JSON.parse(json) as Record<string, string>;
   } catch {
@@ -87,24 +88,33 @@ const parseMatrixEnv = (): Record<string, string> => {
 };
 
 export const writeOutput = async (path: string, outputs: Record<string, string | number | boolean | object>) => {
-  const output = Object.entries(outputs).map(([key, value]) => {
-    if (typeof value === "object") {
-      return `${key}=${JSON.stringify(value)}`;
-    }
-    return `${key}=${value}`;
-  }).join("\n");
-  await fs.writeFile(path, output, "utf8");
+  const output = Object.entries(outputs)
+    .map(([key, value]) => {
+      const stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+
+      if (stringValue.includes('\n')) {
+        let delimiter = 'EOF';
+        while (stringValue.includes(delimiter)) {
+          delimiter = `${delimiter}_`;
+        }
+        return `${key}<<${delimiter}\n${stringValue}\n${delimiter}`;
+      }
+
+      return `${key}=${stringValue}`;
+    })
+    .join('\n');
+  await fs.writeFile(path, output, 'utf8');
 };
 
 export interface ArtifactConfig {
   path: string;
   include?: string[];
-};
+}
 
 interface BuildResult<TPayload, TArtifacts extends string> {
   payload?: TPayload;
   artifacts?: Record<TArtifacts, string | ArtifactConfig>;
-};
+}
 
 type BuildEnv = CoreGithubActionEnvironment & {
   event: { before: string };
@@ -118,29 +128,24 @@ type BeforeEnv = CoreGithubActionEnvironment & {
 export const before = async (fn: (env: BeforeEnv) => Promise<void> | void) => {
   if (env.MATRIX_ONLY) return; // Allow importing for matrix extraction without running
   const parsed = CoreGithubActionEnvironment.parse(env);
-  const event = await fs.readFile(parsed.GITHUB_EVENT_PATH, "utf8");
+  const event = await fs.readFile(parsed.GITHUB_EVENT_PATH, 'utf8');
 
   await fn({
     ...parsed,
-    event: JSON.parse(event),
+    event: JSON.parse(event)
   });
 };
 
-export const build = async <
-  TPayload = void,
-  TArtifacts extends string = never
->(
-  fn: (env: BuildEnv) => Promise<void | BuildResult<TPayload, TArtifacts>> | void | BuildResult<TPayload, TArtifacts>
-) => {
+export const build = async <TPayload = void, TArtifacts extends string = never>(fn: (env: BuildEnv) => Promise<void | BuildResult<TPayload, TArtifacts>> | void | BuildResult<TPayload, TArtifacts>) => {
   if (env.MATRIX_ONLY) return; // Allow importing for matrix extraction without running
   const parsed = CoreGithubActionEnvironment.parse(env);
-  const event = await fs.readFile(parsed.GITHUB_EVENT_PATH, "utf8");
+  const event = await fs.readFile(parsed.GITHUB_EVENT_PATH, 'utf8');
   const matrix = parseMatrixEnv();
 
   const result = await fn({
     ...parsed,
     event: JSON.parse(event),
-    matrix,
+    matrix
   });
 
   if (!result) return;
@@ -148,13 +153,11 @@ export const build = async <
   const artifactPaths: string[] = [];
   const artifactMap: Record<string, string> = {};
   const workspaceRoot = parsed.GITHUB_WORKSPACE;
-  const ciName = env.CI_NAME ?? "ci";
-  const stagingRoot = path.join(workspaceRoot, ".artifacts", ciName);
+  const ciName = env.CI_NAME ?? 'ci';
+  const stagingRoot = path.join(workspaceRoot, '.artifacts', ciName);
 
   const ensureWorkspaceRelativePath = async (name: string, artifactPath: string) => {
-    const absolutePath = path.isAbsolute(artifactPath)
-      ? artifactPath
-      : path.resolve(process.cwd(), artifactPath);
+    const absolutePath = path.isAbsolute(artifactPath) ? artifactPath : path.resolve(process.cwd(), artifactPath);
 
     if (absolutePath.startsWith(`${workspaceRoot}${path.sep}`) || absolutePath === workspaceRoot) {
       return path.relative(workspaceRoot, absolutePath);
@@ -180,7 +183,7 @@ export const build = async <
 
   if (result.artifacts) {
     for (const [name, config] of Object.entries(result.artifacts)) {
-      const artifactPath = typeof config === "string" ? config : (config as ArtifactConfig).path;
+      const artifactPath = typeof config === 'string' ? config : (config as ArtifactConfig).path;
       const relativePath = await ensureWorkspaceRelativePath(name, artifactPath);
       artifactPaths.push(relativePath);
       artifactMap[name] = relativePath;
@@ -189,13 +192,13 @@ export const build = async <
 
   const metadata = {
     payload: result.payload,
-    artifacts: artifactMap,
+    artifacts: artifactMap
   };
 
   // Write outputs for workflow to consume
   await writeOutput(parsed.GITHUB_OUTPUT, {
     metadata: superjson.stringify(metadata),
-    artifact_paths: artifactPaths.join("\n"),
+    artifact_paths: artifactPaths.join('\n')
   });
 };
 
@@ -209,7 +212,7 @@ type DeployEnv<TPayload, TArtifacts extends string> = CoreGithubActionEnvironmen
 /**
  * Deploy function - receives build outputs from artifacts.
  * For matrix builds, aggregates payloads from all matrix entries.
- * 
+ *
  * @example
  * type Payload = { version: string; digest: string };
  * type Artifacts = "build" | "logs";
@@ -218,26 +221,21 @@ type DeployEnv<TPayload, TArtifacts extends string> = CoreGithubActionEnvironmen
  *   console.log(env.artifacts.build);
  * });
  */
-export const deploy = async <
-  TPayload = void,
-  TArtifacts extends string = never
->(
-  fn: (env: DeployEnv<TPayload, TArtifacts>) => Promise<void> | void
-): Promise<void> => {
+export const deploy = async <TPayload = void, TArtifacts extends string = never>(fn: (env: DeployEnv<TPayload, TArtifacts>) => Promise<void> | void): Promise<void> => {
   if (env.MATRIX_ONLY) return; // Allow importing for matrix extraction without running
 
   const parsed = CoreGithubActionEnvironment.parse(env);
-  const event = await fs.readFile(parsed.GITHUB_EVENT_PATH, "utf8");
+  const event = await fs.readFile(parsed.GITHUB_EVENT_PATH, 'utf8');
   const matrix = parseMatrixEnv();
 
   // Read artifacts directory
   const artifactsDir = env.ARTIFACTS_DIR;
   if (!artifactsDir) {
-    throw new Error("ARTIFACTS_DIR environment variable is required");
+    throw new Error('ARTIFACTS_DIR environment variable is required');
   }
 
   const ciName = env.CI_NAME;
-  if (!ciName) throw new Error("CI_NAME environment variable is required");
+  if (!ciName) throw new Error('CI_NAME environment variable is required');
 
   // Scan for metadata artifacts
   const metadataFiles: string[] = [];
@@ -246,7 +244,7 @@ export const deploy = async <
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       if (!entry.name.startsWith(ciName)) continue;
-      if (entry.name.endsWith("-metadata")) {
+      if (entry.name.endsWith('-metadata')) {
         const metadataPath = `${artifactsDir}/${entry.name}/metadata.json`;
         try {
           await fs.access(metadataPath);
@@ -266,9 +264,12 @@ export const deploy = async <
 
   for (const metadataPath of metadataFiles) {
     try {
-      const metadataContent = (await fs.readFile(metadataPath, "utf8")).trim();
+      const metadataContent = (await fs.readFile(metadataPath, 'utf8')).trim();
       // Deserialize with superjson to restore Date objects, etc.
-      const metadata = superjson.parse<{ payload?: TPayload; artifacts?: Record<string, string> }>(metadataContent);
+      const metadata = superjson.parse<{
+        payload?: TPayload;
+        artifacts?: Record<string, string>;
+      }>(metadataContent);
 
       if (metadata.payload) {
         payloads.push(metadata.payload);
@@ -289,11 +290,11 @@ export const deploy = async <
   const artifactDirs = (await fs.readdir(artifactsDir, { withFileTypes: true }))
     .filter(entry => entry.isDirectory())
     .map(entry => entry.name)
-    .filter(name => name.startsWith(ciName) && name.endsWith("-artifacts"))
+    .filter(name => name.startsWith(ciName) && name.endsWith('-artifacts'))
     .map(name => `${artifactsDir}/${name}`);
 
   const resolveArtifactPath = async (relativePath: string): Promise<string> => {
-    const normalizedPath = relativePath.startsWith("./") ? relativePath.slice(2) : relativePath;
+    const normalizedPath = relativePath.startsWith('./') ? relativePath.slice(2) : relativePath;
     const baseCandidates = [normalizedPath, relativePath];
     const basenameCandidates = baseCandidates.map(candidate => path.basename(candidate));
     const candidates = [...baseCandidates, ...basenameCandidates];
@@ -332,6 +333,6 @@ export const deploy = async <
     event: JSON.parse(event),
     matrix,
     build: buildPayload,
-    artifacts: artifacts as Record<TArtifacts, string>,
+    artifacts: artifacts as Record<TArtifacts, string>
   });
 };

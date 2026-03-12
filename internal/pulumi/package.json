@@ -1,7 +1,7 @@
 {
   "name": "@conservation-stream/internal-pulumi",
-  "type": "module",
   "private": true,
+  "type": "module",
   "exports": {
     "./*": {
       "types": "./src/*.ts",

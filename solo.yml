@@ -1,0 +1,17 @@
+name: conservation
+icon: icon.png
+processes:
+  Site UI:
+    command: pnpm dev
+    working_dir: /Users/jameswilliams/Developer/conservation/apps/site/site
+    auto_start: true
+    auto_restart: false
+    restart_when_changed: []
+    env: {}
+  KB bridge:
+    command: pnpm dev
+    working_dir: /Users/jameswilliams/Developer/conservation/apps/kb
+    auto_start: false
+    auto_restart: false
+    restart_when_changed: []
+    env: {}

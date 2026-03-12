@@ -1,16 +1,16 @@
 {
   "name": "@conservation-stream/internal-actions",
-  "type": "module",
   "version": "0.0.0",
+  "private": true,
+  "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
-  "private": true,
+  "dependencies": {
+    "superjson": "catalog:",
+    "zod": "catalog:"
+  },
   "devDependencies": {
     "@types/node": "latest",
     "node:latest": "link:@types/node:latest"
-  },
-  "dependencies": {
-    "zod": "catalog:",
-    "superjson": "catalog:"
   }
 }
