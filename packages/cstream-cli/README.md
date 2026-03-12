@@ -1,7 +1,5 @@
 # cstream-cli
 
-Starter Go CLI using `urfave/cli/v2` with `publish` and `forward` commands.
-
 ## Run locally
 
 ```bash
