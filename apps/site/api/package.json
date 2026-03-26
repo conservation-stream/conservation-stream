@@ -26,6 +26,7 @@
 		"@conservation-stream/mtx-manager": "workspace:*",
 		"@hono/standard-validator": "^0.2.2",
 		"better-auth": "catalog:",
+		"cloudflare": "^5.2.0",
 		"date-fns": "^4.1.0",
 		"drizzle-orm": "^0.45.1",
 		"hono": "^4.11.7",

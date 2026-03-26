@@ -6,6 +6,10 @@ import { makeUrl, type Helpers } from './internal/module/helpers';
 import type { AnyModule } from './internal/module/module';
 
 export * from './internal/manager/mtx';
+export * from './internal/mediamtx/global';
+export * from './internal/mediamtx/path';
+export * from './internal/module/helpers';
+export * from './internal/module/module';
 export * from './modules/auth';
 export * from './modules/logs';
 export * from './modules/recording';
@@ -58,7 +62,7 @@ export async function serveModuleHandlers<const Factories extends readonly AnyMo
   for (const factory of factories) {
     const { id, path, metadata: meta, config: modConfig, handler, ...rest } = await factory(helpers);
     metadata[id] = meta;
-    config = deepmerge(config, modConfig);
+    config = merge(config, modConfig);
     hono.route(path, handler);
     extensions[id] = rest;
   }
@@ -81,3 +85,7 @@ export async function serveModuleHandlers<const Factories extends readonly AnyMo
 
   return { route: hono, metadata, ...extensions } as { route: Hono; metadata: MetadataMap<Factories> } & Extensions<Factories>;
 }
+
+const merge = <T>(a: T, b: T): T => {
+  return deepmerge(a, b) as T;
+};
