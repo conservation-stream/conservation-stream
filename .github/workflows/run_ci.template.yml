@@ -18,15 +18,14 @@ on:
         required: false
         default: '{"include":[{"matrix_key":"default","matrix_values_json":"{}"}]}'
 
-permissions:
-  contents: read
-  actions: write
-  packages: write
-
 jobs:
   build:
     name: build (${{ matrix.matrix_key }})
     runs-on: ${{ matrix.runner || 'ubuntu-latest' }}
+    permissions:
+      contents: read
+      actions: write
+      packages: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(inputs.build_matrix || '{"include":[{"matrix_key":"default","matrix_values_json":"{}"}]}') }}
@@ -88,6 +87,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
+    permissions:
+      contents: write
+      actions: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
         with:

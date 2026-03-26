@@ -4,11 +4,6 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: read
-  packages: write
-  actions: write
-
 jobs:
   determine:
     uses: ./.github/workflows/determine_changes.template.yml
@@ -20,6 +15,10 @@ jobs:
     name: ${{ matrix.name }}
     needs: determine
     if: needs.determine.outputs.count != '0'
+    permissions:
+      contents: write
+      packages: write
+      actions: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.determine.outputs.matrix) }}

@@ -43,9 +43,18 @@ const ensureRelease = async (repo: string, tag: string, image: string) => {
     });
     console.log(`GitHub release ${tag} already exists`);
   } catch {
-    await execFileAsync('gh', ['release', 'create', tag, '--repo', repo, '--title', tag, '--notes', notes], {
-      env: process.env
-    });
+    try {
+      await execFileAsync('gh', ['release', 'create', tag, '--repo', repo, '--title', tag, '--notes', notes], {
+        env: process.env
+      });
+    } catch (error) {
+      const stderr = error instanceof Error && 'stderr' in error ? String(error.stderr) : '';
+      if (stderr.includes('Resource not accessible by integration')) {
+        throw new Error('Creating a GitHub release requires `contents: write` permission on GITHUB_TOKEN');
+      }
+
+      throw error;
+    }
   }
 };
 
