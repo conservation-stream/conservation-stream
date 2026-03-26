@@ -58,7 +58,7 @@ export async function serveModuleHandlers<const Factories extends readonly AnyMo
   for (const factory of factories) {
     const { id, path, metadata: meta, config: modConfig, handler, ...rest } = await factory(helpers);
     metadata[id] = meta;
-    config = deepmerge(config, modConfig) as MediaMTXConfig;
+    config = deepmerge(config, modConfig);
     hono.route(path, handler);
     extensions[id] = rest;
   }

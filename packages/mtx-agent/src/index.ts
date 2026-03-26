@@ -7,7 +7,7 @@ import { handleRecording } from './internal/handlers/recording.ts';
 
 if (!process.env.MTX_MANAGER_URL) throw new Error('MTX_MANAGER_URL is not set');
 
-console.log(`Connecting to ${process.env.MTX_MANAGER_URL}`);
+console.log(`Connected to ${process.env.MTX_MANAGER_URL}`);
 await connect<MTXMetadata>(process.env.MTX_MANAGER_URL, {
   onConfig: async ({ config, location }) => {
     console.log(`Writing config to ${location}`);
