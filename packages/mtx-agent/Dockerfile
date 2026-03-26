@@ -11,19 +11,24 @@ COPY packages/mtx-agent/package.json ./packages/mtx-agent/
 COPY packages/mtx-manager/package.json ./packages/mtx-manager/
 COPY packages/mtx-client/package.json ./packages/mtx-client/
 COPY apps/site/api/package.json ./apps/site/api/
+COPY internal/actions/package.json ./internal/actions/
 
 RUN pnpm install --frozen-lockfile
 
-FROM base
+FROM deps AS build
 
-WORKDIR /app
-
-COPY --from=deps /app ./
 COPY packages/mtx-agent ./packages/mtx-agent
 COPY packages/mtx-manager ./packages/mtx-manager
 COPY packages/mtx-client ./packages/mtx-client
 COPY apps/site/api ./apps/site/api
 
-WORKDIR /app/packages/mtx-agent
+RUN pnpm --recursive --filter @conservation-stream/mtx-agent... run build --if-present
+RUN pnpm --filter @conservation-stream/mtx-agent --prod --legacy deploy /prod/mtx-agent
+
+FROM base
+
+WORKDIR /app
+
+COPY --from=build /prod/mtx-agent ./
 
 CMD ["pnpm", "start"]
