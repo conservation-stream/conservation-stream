@@ -17,6 +17,7 @@ jobs:
     if: needs.determine.outputs.count != '0'
     permissions:
       contents: write
+      id-token: write
       packages: write
       actions: write
     strategy:
