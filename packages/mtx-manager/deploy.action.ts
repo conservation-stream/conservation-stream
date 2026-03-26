@@ -2,6 +2,7 @@ import { deploy } from '@conservation-stream/internal-actions';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { z } from 'zod';
 import { $ } from 'zx';
 import type { Payload } from './build.action.ts';
 
