@@ -1,5 +1,5 @@
 import { deploy } from '@conservation-stream/internal-actions';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { $ } from 'zx';
@@ -36,22 +36,19 @@ const getBuild = (builds: Payload[]) => {
   return build;
 };
 
-await deploy<Payload, Artifacts>(async env => {
-  const npmToken = process.env.NPM_TOKEN;
-  if (!npmToken) {
-    throw new Error('NPM_TOKEN is required to publish the package');
-  }
+const RequiredSecrets = z.object({
+  NPM_TOKEN: z.string()
+});
 
+await deploy<Payload, Artifacts>(async env => {
+  const secrets = RequiredSecrets.parse(env.SECRETS);
   const build = getBuild(env.build);
   const packageFile = path.join(env.artifacts.package, build.fileName);
   const temp = await TemporaryHandle.create('actions-mtx-manager-npm-');
   const npmrcPath = path.join(temp.path, '.npmrc');
 
   try {
-    await writeFile(
-      npmrcPath,
-      ['registry=https://registry.npmjs.org/', '//registry.npmjs.org/:_authToken=' + npmToken, 'always-auth=true', ''].join('\n')
-    );
+    await writeFile(npmrcPath, ['registry=https://registry.npmjs.org/', '//registry.npmjs.org/:_authToken=' + secrets.NPM_TOKEN, 'always-auth=true', ''].join('\n'));
 
     console.log(`Publishing ${build.packageName}@${build.version}`);
     console.log(`Tarball: ${packageFile}`);
@@ -60,7 +57,7 @@ await deploy<Payload, Artifacts>(async env => {
       cwd: env.GITHUB_WORKSPACE,
       env: {
         ...process.env,
-        NODE_AUTH_TOKEN: npmToken,
+        NODE_AUTH_TOKEN: secrets.NPM_TOKEN,
         NPM_CONFIG_USERCONFIG: npmrcPath
       }
     })`vp pm publish ${packageFile} --access public --no-git-checks -- --provenance`;
