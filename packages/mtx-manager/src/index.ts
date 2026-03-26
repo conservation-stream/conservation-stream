@@ -84,7 +84,7 @@ export async function serveModuleHandlers<const Factories extends readonly AnyMo
   );
 
   hono.get('/metadata', async c => {
-    return c.json(metadata);
+    return c.json(metadata, 200);
   });
 
   hono.get('/config', async c => {
