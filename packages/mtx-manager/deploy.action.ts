@@ -37,9 +37,14 @@ const getBuild = (builds: Payload[]) => {
   return build;
 };
 
-const RequiredSecrets = z.object({
-  NPM_TOKEN: z.string()
-});
+const RequiredSecrets = z
+  .string()
+  .transform(value => JSON.parse(value))
+  .pipe(
+    z.object({
+      NPM_TOKEN: z.string()
+    })
+  );
 
 await deploy<Payload, Artifacts>(async env => {
   const secrets = RequiredSecrets.parse(env.SECRETS);
