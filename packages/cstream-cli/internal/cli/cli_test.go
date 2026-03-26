@@ -10,6 +10,9 @@ import (
 	"cstream-cli/internal/pipeline"
 )
 
+var publishFrameFlags = []string{"--height", "720", "--width", "1280", "--rate", "30/1"}
+var publishDynamicFlags = append([]string{"--dynamic", "wss://api.example.com/config", "--base-bitrate", "100"}, publishFrameFlags...)
+
 type stubPublishPipeline struct {
 	run func(ctx context.Context) error
 }
@@ -59,7 +62,8 @@ func TestPublishWithDynamicPasses(t *testing.T) {
 		return stubPublishPipeline{}, nil
 	})
 
-	err := run([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtmp://out.local/live", "--dynamic", "https://api.example.com/config"}, io.Discard, io.Discard)
+	args := append([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtmp://out.local/live"}, publishDynamicFlags...)
+	err := run(args, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -70,7 +74,8 @@ func TestPublishWithPresetPasses(t *testing.T) {
 		return stubPublishPipeline{}, nil
 	})
 
-	err := run([]string{"cstream", "publish", "--in", "rtmp://in.local/live", "--out", "rtsp://out.local/live", "--preset", "twitch"}, io.Discard, io.Discard)
+	args := append([]string{"cstream", "publish", "--in", "rtmp://in.local/live", "--out", "rtsp://out.local/live", "--preset", "twitch"}, publishFrameFlags...)
+	err := run(args, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -90,7 +95,8 @@ func TestPublishBuildsAndRunsPipeline(t *testing.T) {
 		}, nil
 	})
 
-	err := run([]string{"cstream", "publish", "--in", "rtsps://in.local/live", "--out", "rtmps://out.local/live", "--preset", "youtube"}, io.Discard, io.Discard)
+	args := append([]string{"cstream", "publish", "--in", "rtsps://in.local/live", "--out", "rtmps://out.local/live", "--preset", "youtube"}, publishFrameFlags...)
+	err := run(args, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -111,11 +117,17 @@ func TestPublishBuildsAndRunsPipeline(t *testing.T) {
 	if gotConfig.Out.URL != "rtmps://out.local/live" {
 		t.Fatalf("expected output URL to be preserved, got %q", gotConfig.Out.URL)
 	}
+	if gotConfig.OriginFrameInfo.Height != "720" || gotConfig.OriginFrameInfo.Width != "1280" || gotConfig.OriginFrameInfo.Rate != "30/1" {
+		t.Fatalf("expected origin frame info to be preserved, got %+v", gotConfig.OriginFrameInfo)
+	}
 	if gotConfig.RuntimeFixes.EnforceMonotonicH264PTS {
 		t.Fatal("expected RTMP output to leave runtime fixes disabled")
 	}
 	if gotConfig.RuntimeFixes.DropRestartEventsAfterFirst {
 		t.Fatal("expected RTMP output to leave runtime fixes disabled")
+	}
+	if gotConfig.OnRunning != nil {
+		t.Fatal("expected preset mode to leave OnRunning unset")
 	}
 	if gotConfig.Debug {
 		t.Fatal("expected publish debug to be disabled by default")
@@ -130,7 +142,8 @@ func TestPublishEnablesRuntimeFixesForRTSPOutput(t *testing.T) {
 		return stubPublishPipeline{}, nil
 	})
 
-	err := run([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtsp://out.local/live", "--preset", "youtube"}, io.Discard, io.Discard)
+	args := append([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtsp://out.local/live", "--preset", "youtube"}, publishFrameFlags...)
+	err := run(args, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -151,7 +164,8 @@ func TestPublishEnablesDebugMode(t *testing.T) {
 		return stubPublishPipeline{}, nil
 	})
 
-	err := run([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtsp://out.local/live", "--preset", "youtube", "--debug"}, io.Discard, io.Discard)
+	args := append([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtsp://out.local/live", "--preset", "youtube", "--debug"}, publishFrameFlags...)
+	err := run(args, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -165,23 +179,76 @@ func TestPublishEnablesDebugMode(t *testing.T) {
 }
 
 func TestPublishRequiresDynamicOrPreset(t *testing.T) {
-	err := run([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtmp://out.local/live"}, io.Discard, io.Discard)
+	args := append([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtmp://out.local/live"}, publishFrameFlags...)
+	err := run(args, io.Discard, io.Discard)
 	if err == nil {
 		t.Fatal("expected error when dynamic/preset missing")
 	}
 }
 
 func TestPublishRejectsBothDynamicAndPreset(t *testing.T) {
-	err := run([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtmp://out.local/live", "--dynamic", "https://api.example.com/config", "--preset", "youtube"}, io.Discard, io.Discard)
+	args := append([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtmp://out.local/live", "--dynamic", "wss://api.example.com/config", "--preset", "youtube", "--base-bitrate", "100"}, publishFrameFlags...)
+	err := run(args, io.Discard, io.Discard)
 	if err == nil {
 		t.Fatal("expected error when both dynamic and preset set")
 	}
 }
 
 func TestPublishRejectsInvalidPreset(t *testing.T) {
-	err := run([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtmp://out.local/live", "--preset", "vimeo"}, io.Discard, io.Discard)
+	args := append([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtmp://out.local/live", "--preset", "vimeo"}, publishFrameFlags...)
+	err := run(args, io.Discard, io.Discard)
 	if err == nil {
 		t.Fatal("expected error for invalid preset")
+	}
+}
+
+func TestPublishRequiresOriginFrameFlags(t *testing.T) {
+	err := run([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtmp://out.local/live", "--preset", "youtube"}, io.Discard, io.Discard)
+	if err == nil {
+		t.Fatal("expected error when origin frame flags are missing")
+	}
+}
+
+func TestPublishDynamicRequiresBaseBitrate(t *testing.T) {
+	args := append([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtmp://out.local/live", "--dynamic", "wss://api.example.com/config"}, publishFrameFlags...)
+	err := run(args, io.Discard, io.Discard)
+	if err == nil {
+		t.Fatal("expected error when --base-bitrate is missing with --dynamic")
+	}
+}
+
+func TestPublishRejectsBaseBitrateWithoutDynamic(t *testing.T) {
+	args := append([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtmp://out.local/live", "--preset", "youtube", "--base-bitrate", "100"}, publishFrameFlags...)
+	err := run(args, io.Discard, io.Discard)
+	if err == nil {
+		t.Fatal("expected error when --base-bitrate is used without --dynamic")
+	}
+}
+
+func TestPublishDynamicRejectsNonWebsocketURL(t *testing.T) {
+	args := append([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtmp://out.local/live", "--dynamic", "https://api.example.com/config", "--base-bitrate", "100"}, publishFrameFlags...)
+	err := run(args, io.Discard, io.Discard)
+	if err == nil {
+		t.Fatal("expected error when --dynamic uses non-websocket URL")
+	}
+}
+
+func TestPublishDynamicSetsOnRunning(t *testing.T) {
+	var gotConfig pipeline.Config
+
+	withPublishPipelineStub(t, func(cfg pipeline.Config) (publishPipeline, error) {
+		gotConfig = cfg
+		return stubPublishPipeline{}, nil
+	})
+
+	args := append([]string{"cstream", "publish", "--in", "rtsp://in.local/live", "--out", "rtmp://out.local/live"}, publishDynamicFlags...)
+	err := run(args, io.Discard, io.Discard)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if gotConfig.OnRunning == nil {
+		t.Fatal("expected dynamic mode to set OnRunning hook")
 	}
 }
 

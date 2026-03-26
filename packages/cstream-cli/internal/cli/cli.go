@@ -8,12 +8,9 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"time"
 
 	"cstream-cli/internal/forward"
 	"cstream-cli/internal/pipeline"
-
-	"github.com/go-gst/go-gst/gst"
 
 	ucli "github.com/urfave/cli/v2"
 )
@@ -77,11 +74,30 @@ func newApp(stdout io.Writer, stderr io.Writer) *ucli.App {
 					},
 					&ucli.StringFlag{
 						Name:  "dynamic",
-						Usage: "dynamic config URL",
+						Usage: "dynamic config WebSocket URL (ws:// or wss://)",
+					},
+					&ucli.UintFlag{
+						Name:  "base-bitrate",
+						Usage: "initial encoder bitrate in kbps (required with --dynamic)",
 					},
 					&ucli.StringFlag{
 						Name:  "preset",
 						Usage: "publish preset: twitch|youtube",
+					},
+					&ucli.StringFlag{
+						Name:     "height",
+						Usage:    "origin frame height",
+						Required: true,
+					},
+					&ucli.StringFlag{
+						Name:     "width",
+						Usage:    "origin frame width",
+						Required: true,
+					},
+					&ucli.StringFlag{
+						Name:     "rate",
+						Usage:    "origin frame rate",
+						Required: true,
 					},
 					&ucli.BoolFlag{
 						Name:  "debug",
@@ -93,13 +109,17 @@ func newApp(stdout io.Writer, stderr io.Writer) *ucli.App {
 					out := ctx.String("out")
 					dynamic := ctx.String("dynamic")
 					preset := ctx.String("preset")
+					baseBitrate := ctx.Uint("base-bitrate")
+					height := ctx.String("height")
+					width := ctx.String("width")
+					rate := ctx.String("rate")
 					debug := ctx.Bool("debug")
 
-					if err := validatePublish(in, out, dynamic, preset); err != nil {
+					if err := validatePublish(in, out, dynamic, preset, baseBitrate); err != nil {
 						return err
 					}
 
-					cfg, err := newPublishPipelineConfig(in, out, ctx.App.Writer, debug)
+					cfg, err := newPublishPipelineConfig(in, out, dynamic, baseBitrate, height, width, rate, ctx.App.Writer, debug)
 					if err != nil {
 						return err
 					}
@@ -164,7 +184,7 @@ func newApp(stdout io.Writer, stderr io.Writer) *ucli.App {
 	}
 }
 
-func validatePublish(in string, out string, dynamic string, preset string) error {
+func validatePublish(in string, out string, dynamic string, preset string, baseBitrate uint) error {
 	if _, err := publishConnectionFromURL("--in", in); err != nil {
 		return err
 	}
@@ -181,9 +201,16 @@ func validatePublish(in string, out string, dynamic string, preset string) error
 	}
 
 	if hasDynamic {
-		if err := validateAnyURL("--dynamic", dynamic); err != nil {
+		if err := validateURLScheme("--dynamic", dynamic, "ws", "wss"); err != nil {
 			return err
 		}
+		if baseBitrate == 0 {
+			return errors.New("--base-bitrate is required when --dynamic is set")
+		}
+	}
+
+	if !hasDynamic && baseBitrate > 0 {
+		return errors.New("--base-bitrate can only be used with --dynamic")
 	}
 
 	if hasPreset {
@@ -197,7 +224,7 @@ func validatePublish(in string, out string, dynamic string, preset string) error
 	return nil
 }
 
-func newPublishPipelineConfig(in string, out string, stdout io.Writer, debug bool) (pipeline.Config, error) {
+func newPublishPipelineConfig(in string, out string, dynamic string, baseBitrate uint, height string, width string, rate string, stdout io.Writer, debug bool) (pipeline.Config, error) {
 	inConnection, err := publishConnectionFromURL("--in", in)
 	if err != nil {
 		return pipeline.Config{}, err
@@ -208,54 +235,27 @@ func newPublishPipelineConfig(in string, out string, stdout io.Writer, debug boo
 		return pipeline.Config{}, err
 	}
 
-	return pipeline.Config{
+	cfg := pipeline.Config{
 		In:  inConnection,
 		Out: outConnection,
 		OriginFrameInfo: pipeline.OriginFrameInfo{
-			Height: "720",
-			Width:  "1280",
-			Rate:   "30/1",
+			Height: height,
+			Width:  width,
+			Rate:   rate,
 		},
 		Debug:     debug,
 		LogWriter: stdout,
-		OnRunning: cyclePublishBitrate(stdout, []uint{100, 1000, pipeline.DefaultEncoderBitrateKbps}),
 		RuntimeFixes: pipeline.RuntimeFixes{
 			EnforceMonotonicH264PTS:     outConnection.Type == pipeline.ConnectionTypeRTSP,
 			DropRestartEventsAfterFirst: outConnection.Type == pipeline.ConnectionTypeRTSP,
 		},
-	}, nil
-}
-
-func cyclePublishBitrate(stdout io.Writer, bitrates []uint) func(context.Context, *gst.Pipeline) error {
-	return func(ctx context.Context, gstPipeline *gst.Pipeline) error {
-		if len(bitrates) == 0 {
-			<-ctx.Done()
-			return ctx.Err()
-		}
-
-		encoder, err := gstPipeline.GetElementByName("encoder")
-		if err != nil {
-			return fmt.Errorf("get encoder element: %w", err)
-		}
-
-		encoder.SetProperty("bitrate", bitrates[0])
-		_, _ = fmt.Fprintf(stdout, "publish bitrate=%d kbps\n", bitrates[0])
-
-		ticker := time.NewTicker(20 * time.Second)
-		defer ticker.Stop()
-
-		index := 0
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-ticker.C:
-				index = (index + 1) % len(bitrates)
-				encoder.SetProperty("bitrate", bitrates[index])
-				_, _ = fmt.Fprintf(stdout, "publish bitrate=%d kbps\n", bitrates[index])
-			}
-		}
 	}
+
+	if strings.TrimSpace(dynamic) != "" {
+		cfg.OnRunning = watchDynamicBitrate(stdout, dynamic, baseBitrate)
+	}
+
+	return cfg, nil
 }
 
 func publishConnectionFromURL(flagName string, raw string) (pipeline.Connection, error) {
@@ -302,19 +302,6 @@ func validateForward(in string, out string) error {
 
 	if err := validateURLScheme("--out", out, "https"); err != nil {
 		return err
-	}
-
-	return nil
-}
-
-func validateAnyURL(flagName string, raw string) error {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return fmt.Errorf("%s must be a valid URL: %w", flagName, err)
-	}
-
-	if u.Scheme == "" || u.Host == "" {
-		return fmt.Errorf("%s must include scheme and host", flagName)
 	}
 
 	return nil

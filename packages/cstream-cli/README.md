@@ -4,8 +4,8 @@
 
 ```bash
 go run ./cmd/cstream --help
-go run ./cmd/cstream publish --in rtsp://source/live --out rtmp://target/live --preset twitch
-go run ./cmd/cstream publish --in rtsp://source/live --out rtsp://target/live --dynamic https://api.example.com/config
+go run ./cmd/cstream publish --in rtsp://source/live --out rtmp://target/live --preset twitch --height 720 --width 1280 --rate 30/1
+go run ./cmd/cstream publish --in rtsp://source/live --out rtsp://target/live --dynamic wss://api.example.com/config --base-bitrate 100 --height 720 --width 1280 --rate 30/1
 go run ./cmd/cstream forward --in rtsp://source/live --out https://whip.example.com/endpoint
 go run ./cmd/cstream version
 ```
@@ -14,7 +14,7 @@ go run ./cmd/cstream version
 
 ```bash
 go build -o bin/cstream ./cmd/cstream
-./bin/cstream publish --in rtsp://source/live --out rtmp://target/live --preset youtube
+./bin/cstream publish --in rtsp://source/live --out rtmp://target/live --preset youtube --height 720 --width 1280 --rate 30/1
 ```
 
 ## Test

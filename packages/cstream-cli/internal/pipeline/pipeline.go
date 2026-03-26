@@ -136,8 +136,8 @@ func (pipeline *Pipeline) watchBus(ctx context.Context, errChannel chan<- error)
 			continue
 		}
 
-		switch msg.Type() {
-		case gst.MessageError:
+		messageType := msg.Type()
+		if messageType == gst.MessageError {
 			gErr := msg.ParseError()
 			if gErr == nil {
 				pipeline.debugf("publish debug: gst error without details\n")
@@ -150,7 +150,9 @@ func (pipeline *Pipeline) watchBus(ctx context.Context, errChannel chan<- error)
 			}
 			errChannel <- fmt.Errorf("pipeline error: %w", gErr)
 			return
-		case gst.MessageWarning:
+		}
+
+		if messageType == gst.MessageWarning {
 			gWarn := msg.ParseWarning()
 			if gWarn != nil {
 				pipeline.debugf("publish debug: gst warning: %v\n", gWarn)
@@ -160,10 +162,16 @@ func (pipeline *Pipeline) watchBus(ctx context.Context, errChannel chan<- error)
 			} else {
 				pipeline.debugf("publish debug: gst warning: %s\n", msg.String())
 			}
-		case gst.MessageStateChanged:
+			continue
+		}
+
+		if messageType == gst.MessageStateChanged {
 			oldState, newState := msg.ParseStateChanged()
 			pipeline.debugf("publish debug: gst state changed: %s -> %s\n", oldState.String(), newState.String())
-		case gst.MessageEOS:
+			continue
+		}
+
+		if messageType == gst.MessageEOS {
 			pipeline.debugf("publish debug: gst eos received\n")
 		}
 	}

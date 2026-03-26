@@ -1,0 +1,23 @@
+{
+  "name": "@conservation-stream/mtx-agent",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/index.ts --watch",
+    "start": "node src/index.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@typescript/native-preview": "7.0.0-dev.20260316.1",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@conservation-stream/mtx-client": "workspace:*",
+    "@conservation-stream/mtx-manager": "workspace:*",
+    "@conservation-stream/site-api": "workspace:*",
+    "partysocket": "^1.1.16",
+    "tail-file-stream": "^0.2.0",
+    "yaml": "^2.8.2",
+    "zod": "catalog:"
+  }
+}

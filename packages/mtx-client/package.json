@@ -1,0 +1,48 @@
+{
+  "name": "@conservation-stream/mtx-client",
+  "version": "0.0.0",
+  "description": "A starter for creating a TypeScript package.",
+  "homepage": "https://github.com/author/library#readme",
+  "bugs": {
+    "url": "https://github.com/author/library/issues"
+  },
+  "license": "MIT",
+  "author": "Author Name <author.name@mail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/author/library.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "generate:openapi": "openapi-ts",
+    "test": "vp test",
+    "check": "vp check",
+    "prepublishOnly": "vp run build"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "0.94.4",
+    "@types/node": "^25.5.0",
+    "@typescript/native-preview": "7.0.0-dev.20260316.1",
+    "bumpp": "^11.0.1",
+    "typescript": "^5.9.3",
+    "vite-plus": "^0.1.11"
+  },
+  "dependencies": {
+    "@tanstack/db": "^0.5.33",
+    "@tanstack/query-core": "^5.90.20",
+    "@tanstack/query-db-collection": "^1.0.30",
+    "zod": "catalog:"
+  }
+}
