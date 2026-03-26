@@ -6,6 +6,9 @@
     "dist"
   ],
   "type": "module",
+  "repository": {
+    "url": "https://github.com/conservation-stream/conservation-stream"
+  },
   "exports": {
     ".": "./dist/index.mjs",
     "./package.json": "./package.json"
