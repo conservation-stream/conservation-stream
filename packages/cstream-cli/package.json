@@ -2,12 +2,17 @@
   "name": "@conservation-stream/cstream-cli",
   "private": true,
   "type": "module",
+  "scripts": {
+    "build": "go build -o bin/cstream ./cmd/cstream",
+    "check": "go test ./...",
+    "test": "go test ./..."
+  },
   "dependencies": {
     "zod": "catalog:"
   },
   "devDependencies": {
     "@conservation-stream/internal-actions": "workspace:*",
-    "@types/node": "latest",
+    "@types/node": "^25.5.0",
     "zx": "^8.8.5"
   }
 }

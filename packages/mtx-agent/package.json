@@ -8,8 +8,10 @@
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
+    "@conservation-stream/internal-actions": "workspace:*",
     "@typescript/native-preview": "7.0.0-dev.20260316.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "zx": "^8.8.5"
   },
   "dependencies": {
     "@conservation-stream/mtx-client": "workspace:*",

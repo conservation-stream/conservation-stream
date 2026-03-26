@@ -2,6 +2,8 @@
 	"name": "@conservation-stream/site-api",
 	"version": "0.0.0",
 	"private": true,
+	"main": "src/index.ts",
+	"types": "src/index.ts",
 	"scripts": {
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
@@ -18,9 +20,13 @@
 		"wrangler": "^4.69.0"
 	},
 	"dependencies": {
+		"@aws-sdk/client-s3": "^3.1015.0",
+		"@aws-sdk/s3-request-presigner": "^3.1015.0",
 		"@better-auth/oauth-provider": "catalog:",
+		"@conservation-stream/mtx-manager": "workspace:*",
 		"@hono/standard-validator": "^0.2.2",
 		"better-auth": "catalog:",
+		"date-fns": "^4.1.0",
 		"drizzle-orm": "^0.45.1",
 		"hono": "^4.11.7",
 		"postgres": "^3.4.8"

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unsafe"
 
 	"github.com/go-gst/go-gst/gst"
 )
@@ -85,7 +86,7 @@ func enforceMonotonicH264PTS(element *gst.Element, fps float64) error {
 		return fmt.Errorf("%s has no src pad", element.GetName())
 	}
 
-	frameDuration := gst.ClockTime(uint64(1e9 / fps))
+	frameDuration := clockTimeFromUint64(uint64(1e9 / fps))
 
 	var (
 		haveLast        bool
@@ -104,11 +105,11 @@ func enforceMonotonicH264PTS(element *gst.Element, fps float64) error {
 			return gst.PadProbeOK
 		}
 
-		adjustedPTS := pts + offset
+		adjustedPTS := pts.Add(offset)
 		if haveLast && adjustedPTS <= lastAdjustedPTS {
-			requiredOffset := (lastAdjustedPTS + frameDuration) - adjustedPTS
+			requiredOffset := lastAdjustedPTS.Add(frameDuration).Sub(adjustedPTS)
 			offset += requiredOffset
-			adjustedPTS = pts + offset
+			adjustedPTS = pts.Add(offset)
 			buffer.SetPresentationTimestamp(adjustedPTS)
 		}
 
@@ -147,4 +148,8 @@ func dropRestartEventsAfterFirst(outsink *gst.Element) error {
 	})
 
 	return nil
+}
+
+func clockTimeFromUint64(value uint64) gst.ClockTime {
+	return *(*gst.ClockTime)(unsafe.Pointer(&value))
 }

@@ -9,7 +9,7 @@ export interface Payload {
 
 type Artifacts = never;
 
-const BUILDER_NAME = 'mtx-agent-build';
+const BUILDER_NAME = 'mtx-agent-builds';
 
 export const build_matrix = {
   include: [
