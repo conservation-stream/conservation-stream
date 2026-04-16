@@ -5,6 +5,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --dir ./site run build"
+  },
   "packageManager": "pnpm@10.28.1",
   "devDependencies": {
     "zod": "catalog:",

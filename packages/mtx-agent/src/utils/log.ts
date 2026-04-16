@@ -27,7 +27,11 @@ export class Log<T extends z.ZodType<unknown, string>> {
     });
   }
 
-  static async create<T extends z.ZodType<unknown, string>>(path: string, parser: T, { signal }: { signal: AbortSignal }) {
+  static async create<T extends z.ZodType<unknown, string>>(
+    path: string,
+    parser: T,
+    { signal }: { signal: AbortSignal }
+  ) {
     if (!existsSync(path)) await writeFile(path, '', 'utf8');
     return new Log(path, parser, { signal });
   }

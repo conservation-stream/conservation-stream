@@ -1,52 +1,180 @@
 import { Hono } from 'hono';
+import { access, appendFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, test } from 'vite-plus/test';
+import { z } from 'zod';
+import { Log } from '../../mtx-agent/src/utils/log.ts';
+import { serveModuleHandlers } from '../src/index.ts';
 import { createAuthModule } from '../src/modules/auth.ts';
+import { createLogModule } from '../src/modules/logs.ts';
 import { createRecordingModule } from '../src/modules/recording.ts';
 
 const isLoopback = (ip: string) => {
   return ip === '127.0.0.1' || ip === '::1';
 };
 
-test('fn', async () => {
-  const auth = await createAuthModule({
+function mountMtx() {
+  const auth = createAuthModule({
     check: async params => {
       if (isLoopback(params.ip)) return true;
       return false;
     }
   });
-  const recording = await createRecordingModule({
-    storage: async () => ({
-      type: 's3',
-      getPresignedUploadURL: async () => 'https://example.com/upload'
-    }),
+  const recording = createRecordingModule({
     ttl: '14d',
     directory: '/mnt/recordings',
     pathsToRecord: ['garden']
   });
-  const logs = await createLogModule({
+  const logs = createLogModule({
     logFile: '/mnt/logs/stream.log',
     logLevel: 'info',
-    onLogs: logs => {
-      console.log(logs);
-    }
+    onLogs: () => {}
   });
+  return serveModuleHandlers({
+    origin: 'http://localhost:3000',
+    prefix: '/prefix',
+    secret: 'secret',
+    config: {
+      paths: {}
+    },
+    factories: [auth, recording, logs]
+  });
+}
+
+test('serveModuleHandlers exposes metadata', async () => {
+  const mtx = await mountMtx();
   const app = new Hono();
-  const handler = await serveModuleHandlers('http://localhost:3000', '/prefix', [auth, recording, logs]);
-  app.route('/prefix', handler);
+  app.route('/prefix', mtx.route);
 
   const response = await app.request('/prefix/metadata');
   const metadata = await response.json();
-  console.log(metadata);
 
   expect(response.status).toBe(200);
+  expect(metadata).toHaveProperty('auth');
+  expect(metadata).toHaveProperty('recording');
+  expect(metadata).toHaveProperty('metrics');
 });
 
-import { access, appendFile, mkdtemp, rm, writeFile } from 'fs/promises';
-import { tmpdir } from 'os';
-import { join } from 'path';
-import z from 'zod';
-import { serveModuleHandlers } from '../src/index.ts';
-import { createLogModule, Log } from '../src/modules/logs.ts';
+test('POST /auth/check rejects invalid body', async () => {
+  const mtx = await mountMtx();
+  const app = new Hono();
+  app.route('/prefix', mtx.route);
+
+  const response = await app.request('/prefix/auth/check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+
+  expect(response.status).toBe(400);
+});
+
+test('POST /metrics/logs rejects malformed payload when callback is set', async () => {
+  const logs = createLogModule({
+    logFile: '/mnt/logs/stream.log',
+    logLevel: 'info',
+    onLogs: () => {}
+  });
+  const mtx = await serveModuleHandlers({
+    origin: 'http://localhost:3000',
+    prefix: '/prefix',
+    secret: 'secret',
+    config: {
+      paths: {}
+    },
+    factories: [logs]
+  });
+  const app = new Hono();
+  app.route('/prefix', mtx.route);
+
+  const response = await app.request('/prefix/metrics/logs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify([{ bad: true }])
+  });
+
+  expect(response.status).toBe(400);
+});
+
+test('POST /metrics/paths rejects non-string array when callback is set', async () => {
+  const logs = createLogModule({
+    logFile: '/mnt/logs/stream.log',
+    logLevel: 'info',
+    onPaths: () => {}
+  });
+  const mtx = await serveModuleHandlers({
+    origin: 'http://localhost:3000',
+    prefix: '/prefix',
+    secret: 'secret',
+    config: {
+      paths: {}
+    },
+    factories: [logs]
+  });
+  const app = new Hono();
+  app.route('/prefix', mtx.route);
+
+  const response = await app.request('/prefix/metrics/paths', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify([1, 2])
+  });
+
+  expect(response.status).toBe(400);
+});
+
+test('POST /recordings/complete returns 404 for unknown id', async () => {
+  const recording = createRecordingModule({
+    ttl: '14d',
+    directory: '/mnt/recordings',
+    pathsToRecord: ['garden']
+  });
+  const mtx = await serveModuleHandlers({
+    origin: 'http://localhost:3000',
+    prefix: '/prefix',
+    secret: 'secret',
+    config: {
+      paths: {}
+    },
+    factories: [recording]
+  });
+  const app = new Hono();
+  app.route('/prefix', mtx.route);
+
+  const response = await app.request('/prefix/recordings/complete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: 'nonexistent' })
+  });
+
+  expect(response.status).toBe(404);
+});
+
+test('GET /config returns 200', async () => {
+  const mtx = await mountMtx();
+  const app = new Hono();
+  app.route('/prefix', mtx.route);
+
+  const response = await app.request('/prefix/config');
+  expect(response.status).toBe(200);
+  const config = await response.json();
+  expect(typeof config).toBe('object');
+});
+
+test('GET /openapi returns the generated MTX spec', async () => {
+  const mtx = await mountMtx();
+  const app = new Hono();
+  app.route('/prefix', mtx.route);
+
+  const response = await app.request('/prefix/openapi');
+  const spec = await response.json();
+
+  expect(response.status).toBe(200);
+  expect(spec.info.title).toBe('MTX Manager API');
+  expect(spec.paths).toHaveProperty('/metadata');
+  expect(spec.paths).toHaveProperty('/config');
+});
 
 class TempLog {
   readonly path: string;
@@ -85,14 +213,18 @@ const collectLines = async <T>(iterator: AsyncIterator<T[]>, count: number, time
 };
 
 const expectNoBatch = async <T>(iterator: AsyncIterator<T[]>, timeoutMs = 150) => {
-  const result = await Promise.race([iterator.next().then(() => 'batch' as const), new Promise<'timeout'>(resolve => setTimeout(() => resolve('timeout'), timeoutMs))]);
+  const result = await Promise.race([
+    iterator.next().then(() => 'batch' as const),
+    new Promise<'timeout'>(resolve => setTimeout(() => resolve('timeout'), timeoutMs))
+  ]);
   expect(result).toBe('timeout');
 };
 
 test('streams all existing lines in the file', async () => {
   await using temp = await TempLog.create();
   await writeFile(temp.path, 'test\ntest2\ntest3\n');
-  await using file = await Log.create(temp.path, z.string());
+  const signal = new AbortController().signal;
+  await using file = await Log.create(temp.path, z.string(), { signal });
 
   const iterator = file[Symbol.asyncIterator]();
   const lines = await collectLines(iterator, 3);
@@ -103,7 +235,8 @@ test('streams all existing lines in the file', async () => {
 test('streams existing and appended lines while open', async () => {
   await using temp = await TempLog.create();
   await writeFile(temp.path, 'existing-1\nexisting-2\n');
-  await using file = await Log.create(temp.path, z.string());
+  const signal = new AbortController().signal;
+  await using file = await Log.create(temp.path, z.string(), { signal });
 
   const iterator = file[Symbol.asyncIterator]();
   const existing = await collectLines(iterator, 2);
@@ -115,21 +248,25 @@ test('streams existing and appended lines while open', async () => {
   expect(appended).toEqual(['appended-1', 'appended-2']);
 });
 
-test('cleans up file when log is out of scope', async () => {
+test('clears log file when Log is disposed', async () => {
   await using temp = await TempLog.create();
   await writeFile(temp.path, 'keep\n');
 
   {
-    await using _file = await Log.create(temp.path, z.string());
+    const signal = new AbortController().signal;
+    await using _file = await Log.create(temp.path, z.string(), { signal });
   }
 
-  await expect(access(temp.path)).rejects.toThrow();
+  await access(temp.path);
+  const cleared = await readFile(temp.path, 'utf8');
+  expect(cleared).toBe('');
 });
 
 test("doesn't stream a non-terminated trailing line", async () => {
   await using temp = await TempLog.create();
   await writeFile(temp.path, 'line-1\nline-2\ntruncated');
-  await using file = await Log.create(temp.path, z.string());
+  const signal = new AbortController().signal;
+  await using file = await Log.create(temp.path, z.string(), { signal });
 
   const iterator = file[Symbol.asyncIterator]();
   const lines = await collectLines(iterator, 2);
@@ -151,7 +288,8 @@ test('streams a single line that matches the schema', async () => {
 
   await using temp = await TempLog.create();
   await writeFile(temp.path, '{"timestamp":"2026-03-22T12:00:00.000Z","level":"info","message":"test"}\n');
-  await using file = await Log.create(temp.path, Schema);
+  const signal = new AbortController().signal;
+  await using file = await Log.create(temp.path, Schema, { signal });
 
   const iterator = file[Symbol.asyncIterator]();
   const lines = await collectLines(iterator, 1);

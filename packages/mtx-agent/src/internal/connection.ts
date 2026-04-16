@@ -6,11 +6,14 @@ interface ConnectParams<Metadata> {
   onMetadata: (metadata: Metadata, { signal }: { signal: AbortSignal }) => Promise<void>;
 }
 
-export const connect = async <Metadata>(url: string, params: ConnectParams<Metadata>) => {
-  const control = new WebSocket(url);
+export const connect = async <Metadata>(options: { url: string; secret: string }, params: ConnectParams<Metadata>) => {
+  const url = new URL(options.url);
+  url.searchParams.set('secret', options.secret);
+  console.log(`Connecting to ${url.toString()}`);
+  const control = new WebSocket(url.toString());
 
   control.addEventListener('open', () => {
-    console.log(`Connected to ${url}`);
+    console.log(`Connected to ${url.toString()}`);
     control.send(JSON.stringify({ type: 'init' }));
   });
 
@@ -21,7 +24,6 @@ export const connect = async <Metadata>(url: string, params: ConnectParams<Metad
   let downstreamServicesAbortController = new AbortController();
   control.addEventListener('message', async event => {
     const data = JSON.parse(event.data);
-    console.log('Received message from control', data);
     switch (data.type) {
       case 'config':
         return params.onConfig(data);

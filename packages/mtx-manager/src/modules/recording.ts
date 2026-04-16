@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { describeRoute, resolver, validator as zValidator } from 'hono-openapi';
 import { upgradeWebSocket } from 'hono/cloudflare-workers';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -31,6 +32,11 @@ export const RecordingRequestParams = z.object({
   duration: z.number()
 });
 
+const UploadInfoParams = z.object({
+  type: z.literal('s3'),
+  signedUrl: z.string()
+});
+
 export const RecordingRequest = z.object({
   id: z.string(),
   params: RecordingRequestParams,
@@ -44,24 +50,53 @@ export const RecordingRequest = z.object({
 export type RecordingRequest = z.output<typeof RecordingRequest>;
 
 export type RecordingRequestParams = z.output<typeof RecordingRequestParams>;
+export type UploadInfoParams = z.output<typeof UploadInfoParams>;
+
+const RecordingSuccessBodySchema = z.object({
+  id: z.string(),
+  status: z.literal('success')
+});
+
+const RecordingFailedBodySchema = z.object({
+  id: z.string(),
+  status: z.literal('error'),
+  message: z.string()
+});
+
+const RecordingCompleteBodySchema = z.discriminatedUnion('status', [
+  RecordingSuccessBodySchema,
+  RecordingFailedBodySchema
+]);
+
+export const RecordingCompleteOkSchema = z.object({
+  success: z.literal(true)
+});
+
+export const RecordingMetadataSchema = z.object({
+  playbackAddress: z.string(),
+  directory: z.string(),
+  links: z.object({
+    queue: z.string()
+  })
+});
 
 export const createRecordingModule =
   ({ directory, ttl, pathsToRecord }: RecordingModuleParams) =>
   async (helpers: Helpers) => {
     const handler = new Hono();
-    const requests = new Map<string, () => void>();
+    const requests = new Map<string, [() => void, (error: unknown) => void]>();
     // There can only be one connected agent at a time
     let agent: { id: string; websocket: MinimalWebSocketLike } | null = null;
     console.log(`Setting up recording module with directory: ${directory} and ttl: ${ttl}`);
 
     const completeUrl = helpers.makeUrl('/recordings/complete');
-    const request = async (signedUrl: string, params: RecordingRequestParams) => {
+    const request = async (params: RecordingRequestParams & { uploadInfo: UploadInfoParams }) => {
       if (!agent) throw new Error('No agent is connected to service this request.');
       const id = crypto.randomUUID();
       const { promise, resolve, reject } = Promise.withResolvers<void>();
       try {
-        requests.set(id, resolve);
-        const request = { id, params, storage: { type: 's3', signedUrl }, completeUrl };
+        requests.set(id, [resolve, reject]);
+        const request: RecordingRequest = { id, params, storage: params.uploadInfo, completeUrl };
         agent.websocket.send(JSON.stringify({ type: 'upload', request }));
       } catch (error) {
         reject(error);
@@ -69,17 +104,53 @@ export const createRecordingModule =
       return await promise;
     };
 
-    handler.post('/complete', async c => {
-      const body = await c.req.json();
-      const id = body.id;
-      const request = requests.get(id);
-      if (!request) throw new Error(`Request with id ${id} not found`);
-      request();
-      return c.json({ success: true });
-    });
+    handler.post(
+      '/complete',
+      describeRoute({
+        operationId: 'completeRecordingUpload',
+        description: 'Called by the recording agent when an upload to object storage has finished.',
+        responses: {
+          200: {
+            description: 'Completion recorded',
+            content: { 'application/json': { schema: resolver(RecordingCompleteOkSchema) } }
+          },
+          400: {
+            description: 'Invalid body'
+          },
+          404: {
+            description: 'Unknown recording request id'
+          }
+        }
+      }),
+      zValidator('json', RecordingCompleteBodySchema),
+      async c => {
+        const status = c.req.valid('json');
+        const resolvers = requests.get(status.id);
+        if (!resolvers) {
+          return c.json({ message: `Request with id ${status.id} not found` }, 404);
+        }
+        const [resolve, reject] = resolvers;
+
+        if (status.status === 'success') {
+          resolve();
+        } else {
+          reject(new Error(status.message));
+        }
+
+        return c.json({ success: true }, 200);
+      }
+    );
 
     handler.get(
       '/queue',
+      describeRoute({
+        operationId: 'connectToRecordingQueue',
+        description:
+          'WebSocket for a single recording agent; becomes active on first client message. Request payloads are not part of HTTP (use description only).',
+        responses: {
+          101: { description: 'Switching Protocols (WebSocket)' }
+        }
+      }),
       upgradeWebSocket(_ => {
         const id = crypto.randomUUID();
         console.log(`Agent ${id} attempting to connect to recording queue`);
@@ -123,6 +194,7 @@ export const createRecordingModule =
             queue: helpers.makeUrl('/recordings/queue')
           }
         },
+        metadataSchema: RecordingMetadataSchema,
         config: {
           playback: true,
           playbackAddress: ':9996',

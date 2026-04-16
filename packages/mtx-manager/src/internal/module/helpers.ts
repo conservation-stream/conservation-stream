@@ -1,8 +1,11 @@
 import { join } from 'node:path';
 
 export const makeUrl =
-  (origin: string, prefix: string) =>
-  (path: string, { params, protocol }: { params?: URLSearchParams; protocol?: 'ws' | 'wss' | 'http' | 'https' } = {}) => {
+  (origin: string, prefix: string, token: string) =>
+  (
+    path: string,
+    { params, protocol }: { params?: URLSearchParams; protocol?: 'ws' | 'wss' | 'http' | 'https' } = {}
+  ) => {
     const base = new URL(prefix, origin);
     const cloned = new URL(base);
     const pathname = join(base.pathname, path);
@@ -18,6 +21,7 @@ export const makeUrl =
       cloned.protocol = protocol;
     }
 
+    cloned.searchParams.set('token', token);
     return cloned.toString();
   };
 

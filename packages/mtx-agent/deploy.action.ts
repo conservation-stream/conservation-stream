@@ -34,8 +34,15 @@ const getBuilds = (builds: Payload[]) => {
   };
 };
 
-const ensureRelease = async (repo: string, tag: string, image: string) => {
-  const notes = [`Published container image \`${image}\`.`, '', `- \`${image}:${tag}\``, `- \`${image}:latest\``].join('\n');
+const getDateTag = (date: Date = new Date()) => {
+  const year = date.getUTCFullYear().toString().padStart(4, '0');
+  const month = (date.getUTCMonth() + 1).toString().padStart(2, '0');
+  const day = date.getUTCDate().toString().padStart(2, '0');
+  return `${year}${month}${day}`;
+};
+
+const ensureRelease = async (repo: string, tag: string, image: string, dateTag: string) => {
+  const notes = [`Published container image \`${image}\`.`, '', `- \`${image}:${tag}\``, `- \`${image}:${dateTag}\``, `- \`${image}:latest\``].join('\n');
 
   try {
     await execFileAsync('gh', ['release', 'view', tag, '--repo', repo], {
@@ -64,7 +71,7 @@ const loginToRegistry = async (actor: string, token: string) => {
   })`docker login ghcr.io --username ${actor} --password-stdin`;
 };
 
-const getTargetTagArgs = (image: string, version: string) => ['--tag', `${image}:${version}`, '--tag', `${image}:latest`];
+const getTargetTagArgs = (image: string, version: string, dateTag: string) => ['--tag', `${image}:${version}`, '--tag', `${image}:${dateTag}`, '--tag', `${image}:latest`];
 
 const getSourceImages = (image: string, builds: Payload[]) => builds.map(build => `${image}:${build.sourceTag}`);
 
@@ -78,10 +85,13 @@ await deploy<Payload, Artifacts>(async env => {
 
   await loginToRegistry(env.GITHUB_ACTOR, githubToken);
 
+  const dateTag = getDateTag();
+
   console.log(`Creating multi-arch tags for ${release.image}`);
   console.log(`Architectures: ${release.builds.map(build => build.arch).join(', ')}`);
+  console.log(`Tags: ${env.GITHUB_REF_NAME}, ${dateTag}, latest`);
 
-  await $`docker buildx imagetools create ${getTargetTagArgs(release.image, env.GITHUB_REF_NAME)} ${getSourceImages(release.image, release.builds)}`;
+  await $`docker buildx imagetools create ${getTargetTagArgs(release.image, env.GITHUB_REF_NAME, dateTag)} ${getSourceImages(release.image, release.builds)}`;
 
-  await ensureRelease(env.GITHUB_REPOSITORY, env.GITHUB_REF_NAME, release.image);
+  await ensureRelease(env.GITHUB_REPOSITORY, env.GITHUB_REF_NAME, release.image, dateTag);
 });

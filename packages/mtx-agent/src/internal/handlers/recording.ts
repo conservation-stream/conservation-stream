@@ -1,7 +1,7 @@
 import { RecordingRequest } from '@conservation-stream/mtx-manager';
 import type { MTXMetadata } from '@conservation-stream/site-api';
 import { createReadStream } from 'node:fs';
-import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { Queue } from '../queue.ts';
@@ -22,33 +22,54 @@ export const handleRecording = async (recording: MTXMetadata['recording'], signa
     params.set('start', request.params.startDate);
     params.set('duration', request.params.duration.toString());
 
-    const stream = await getRecordingFromMediamtx('localhost', recording.playbackAddress, params);
-    const clipPath = join(recording.directory, 'clips', `${request.id}.mp4`);
-    const { file, size } = await cacheRecordingToDisk(clipPath, stream);
+    console.log('Getting recording from mediamtx');
+    try {
+      const stream = await getRecordingFromMediamtx('mediamtx', recording.playbackAddress, params);
+      const clipPath = join(recording.directory, 'clips', `${request.id}.mp4`);
+      const { file, size } = await cacheRecordingToDisk(clipPath, stream);
 
-    await uploadFile(request.storage.signedUrl, file, size);
-    await completeRecording(request.completeUrl, request.id);
-    console.log('Recording completed');
+      await uploadFile(request.storage.signedUrl, file, size);
+      await rm(clipPath);
+      await completeRecording(request.completeUrl, request.id);
+      console.log('Recording completed');
+    } catch (error) {
+      console.error('Failed to process recording', error);
+      await failRecording(request.completeUrl, request.id, 'Failed to process recording');
+    }
   }
 };
 
 const getRecordingFromMediamtx = async (host: string, port: string, params: URLSearchParams) => {
+  params.set('format', 'mp4');
   const url = `http://${host}${port}/get?${params.toString()}`;
   const stream = await fetch(url);
-  if (!stream.ok) throw new Error('Failed to get recording stream');
+  if (!stream.ok) throw new Error(`Failed to get recording stream (${stream.statusText}): ${await stream.text()}`);
   if (!stream.body) throw new Error('Recording stream is missing body');
   return Readable.fromWeb(stream.body);
 };
 
 const completeRecording = async (url: string, id: string) => {
-  const response = await fetch(url, { method: 'POST', body: JSON.stringify({ id }), headers: { 'Content-Type': 'application/json' } });
+  const response = await fetch(url, {
+    method: 'POST',
+    body: JSON.stringify({ id, status: 'success' }),
+    headers: { 'Content-Type': 'application/json' }
+  });
   if (!response.ok) throw new Error('Failed to complete recording');
 };
 
+const failRecording = async (url: string, id: string, message: string) => {
+  const response = await fetch(url, {
+    method: 'POST',
+    body: JSON.stringify({ id, status: 'error', message }),
+    headers: { 'Content-Type': 'application/json' }
+  });
+  if (!response.ok) throw new Error('Failed to fail recording');
+};
 const uploadFile = async (url: string, file: Readable, size: number) => {
   const response = await fetch(url, {
     method: 'PUT',
     body: file,
+    duplex: 'half',
     headers: {
       'Content-Type': 'video/mp4',
       'Content-Length': size.toString()

@@ -6,7 +6,13 @@ import { Log } from '../../utils/log.ts';
 
 const LogSchema = z
   .string()
-  .transform(json => JSON.parse(json))
+  .transform(line => {
+    try {
+      return JSON.parse(line);
+    } catch {
+      return { timestamp: new Date().toISOString(), level: 'UNK', message: line };
+    }
+  })
   .pipe(
     z.object({
       timestamp: z.string(),
