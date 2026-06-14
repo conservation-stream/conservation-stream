@@ -1,0 +1,14 @@
+rtsp: true
+webrtc: true
+rtmp: true
+
+paths:
+  stream:
+    source: rtsp://root:kadfex-jarkuf-1Zobdu@192.168.4.36/axis-media/media.amp?camera=1&videoframeskipmode=empty&videozprofile=classic&resolution=1280x720&fps=50&audiocodec=aac&audiosamplerate=16000&audiobitrate=32000&timestamp=0&videocodec=h264&h264profile=baseline
+    runOnReady: >
+      /bin/sh -lc "cstream publish --in rtsp://127.0.0.1:8554/stream --out rtsp://127.0.0.1:8554/dynamic_stream --preset twitch --debug"
+    runOnReadyRestart: yes
+  ~^dynamic_:
+    runOnReady: >
+      /bin/sh -lc "cstream forward --in rtsp://127.0.0.1:8554/$MTX_PATH --out https://customer-51r7ggqg830zbmef.cloudflarestream.com/afe378616a92a11189167d163f17039ck1a44b550df472650ee84d734002ba871/webRTC/publish --debug"
+    runOnReadyRestart: yes

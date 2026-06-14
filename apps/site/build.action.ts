@@ -3,14 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { $, fs } from "zx";
 
-interface Payload {
-  version_id?: string;
-  preview_url?: string;
-};
-
-type Artifacts = "build";
-
-
+export type Artifacts = "api" | "ui";
 
 export class TemporaryHandle {
   public readonly path: string;
@@ -23,23 +16,21 @@ export class TemporaryHandle {
   }
 }
 
+await build<unknown, Artifacts>(async () => {
+  const api = new TemporaryHandle();
+  const ui = new TemporaryHandle();
 
+  await $`pnpm --filter @conservation-stream/site build`;
+  await $`cp -r ${path.join(import.meta.dirname, "site", "build", "client")} ${ui.path}`;
 
-await build<Payload, Artifacts>(async () => {
-  const tmp = new TemporaryHandle();
-
-  await $`pnpm build`;
-  await $`pnpm --filter @conservation-stream/site deploy ${tmp.path} --legacy`;
+  await fs.mkdir(api.path, { recursive: true });
+  await $`pnpm --filter @conservation-stream/site-api deploy ${api.path} --legacy`;
 
   return {
-    payload: {
-      // version_id and preview_url will be set when wrangler upload is implemented
-    },
+    payload: {},
     artifacts: {
-      build: tmp.path,
+      api: api.path,
+      ui: ui.path,
     },
   };
-
-
-})
-
+});

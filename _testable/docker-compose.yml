@@ -1,0 +1,29 @@
+services:
+  mediamtx:
+    image: ghcr.io/conservation-stream/mediamtx-cstream:latest
+    volumes:
+      - config_data:/config
+      - recordings:/recordings
+      - logs:/logs
+    command: ['/config/mediamtx.yml']
+    restart: unless-stopped
+    depends_on:
+      mtx-agent:
+        condition: service_started
+
+  mtx-agent:
+    build:
+      context: ..
+      dockerfile: packages/mtx-agent/Dockerfile
+    environment:
+      - MTX_MANAGER_URL=http://host.docker.internal:8787/api/mtx
+      - MTX_AGENT_SECRET=${MTX_AGENT_SECRET}
+    volumes:
+      - config_data:/config
+      - logs:/logs
+    restart: unless-stopped
+
+volumes:
+  config_data:
+  recordings:
+  logs:

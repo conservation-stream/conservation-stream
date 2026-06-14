@@ -1,0 +1,18 @@
+name: conservation-site
+services:
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: db
+    ports:
+      - '5432:5432'
+    volumes:
+      - pg:/var/lib/postgresql/data
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+volumes:
+  pg:
