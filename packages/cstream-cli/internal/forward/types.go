@@ -65,6 +65,7 @@ func validateConfig(cfg Config) error {
 	if cfg.RTSPSourceURL == "" {
 		return fmt.Errorf("rtsp source URL is required")
 	}
+
 	if cfg.WHIPPublishURL == "" {
 		return fmt.Errorf("WHIP publish URL is required")
 	}

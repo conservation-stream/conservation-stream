@@ -1,0 +1,24 @@
+[package]
+name = "cstream-moq-publisher"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+
+[features]
+default = ["quinn", "websocket"]
+quinn = ["moq-native/quinn"]
+websocket = ["moq-native/websocket"]
+
+[dependencies]
+anyhow = { version = "1", features = ["backtrace"] }
+bytes = "1"
+clap = { version = "4", features = ["derive"] }
+hang = "0.19"
+moq-mux = "0.5"
+moq-native = { version = "0.17", default-features = false, features = ["aws-lc-rs"] }
+rustls = { version = "0.23", features = ["aws-lc-rs"], default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1.48", features = ["full"] }
+tracing = "0.1"
+url = "2"

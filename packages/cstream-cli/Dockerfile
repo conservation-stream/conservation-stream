@@ -1,3 +1,5 @@
+ARG MOQ_CLI_VERSION=0.7.31
+
 FROM golang:1.24-bookworm AS builder
 
 WORKDIR /src/packages/cstream-cli
@@ -20,6 +22,17 @@ ARG TARGETOS
 ARG TARGETARCH
 
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -o /out/cstream ./cmd/cstream
+
+FROM rust:1.94-bookworm AS moq-publisher-builder
+
+WORKDIR /src/packages/cstream-cli/moq-publisher
+
+COPY packages/cstream-cli/moq-publisher ./
+RUN cargo fetch --locked
+
+RUN cargo build --release --locked
+
+FROM moqdev/moq-cli:${MOQ_CLI_VERSION} AS moqcli
 
 FROM ubuntu:24.04
 
@@ -58,8 +71,11 @@ RUN set -eux; \
 	rm -f /tmp/mediamtx.tar.gz
 
 COPY --from=builder /out/cstream /usr/local/bin/cstream
+COPY --from=moq-publisher-builder /src/packages/cstream-cli/moq-publisher/target/release/cstream-moq-publisher /usr/local/bin/cstream-moq-publisher
+COPY --from=moqcli /bin/moq-cli /usr/local/bin/moq-cli
+COPY --from=moqcli /nix /nix
 
-RUN chmod +x /usr/local/bin/cstream
+RUN chmod +x /usr/local/bin/cstream /usr/local/bin/cstream-moq-publisher /usr/local/bin/moq-cli
 
 EXPOSE 8554 1935 8889 8189/udp
 

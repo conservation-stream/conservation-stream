@@ -6,6 +6,7 @@ toolchain go1.24.3
 
 require (
 	github.com/bluenviron/gortsplib/v5 v5.2.0
+	github.com/coder/websocket v1.8.14
 	github.com/go-gst/go-gst v1.4.0
 	github.com/pion/rtp v1.10.1
 	github.com/pion/webrtc/v4 v4.2.9
@@ -14,7 +15,6 @@ require (
 
 require (
 	github.com/bluenviron/mediacommon/v2 v2.5.1 // indirect
-	github.com/coder/websocket v1.8.14 // indirect
 	github.com/go-gst/go-glib v1.4.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect

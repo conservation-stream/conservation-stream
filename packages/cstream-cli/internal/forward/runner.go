@@ -6,7 +6,11 @@ import (
 	"sync"
 )
 
-type Runner struct {
+type Runner interface {
+	Run(context.Context) error
+}
+
+type WHIPRunner struct {
 	cfg       Config
 	source    Source
 	publisher Publisher
@@ -14,13 +18,13 @@ type Runner struct {
 	logger    Logger
 }
 
-func NewRunner(cfg Config) (*Runner, error) {
+func NewRunner(cfg Config) (Runner, error) {
 	normalized := normalizeConfig(cfg)
 	if err := validateConfig(normalized); err != nil {
 		return nil, err
 	}
 
-	return &Runner{
+	return &WHIPRunner{
 		cfg:       normalized,
 		source:    NewRTSPSource(normalized),
 		publisher: NewWHIPPublisher(normalized),
@@ -29,7 +33,7 @@ func NewRunner(cfg Config) (*Runner, error) {
 	}, nil
 }
 
-func (runner *Runner) Run(ctx context.Context) error {
+func (runner *WHIPRunner) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
