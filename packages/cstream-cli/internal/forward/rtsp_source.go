@@ -120,7 +120,7 @@ func (source *RTSPSource) registerPacketHandler(media *description.Media, stream
 			pts, _ := source.client.PacketPTS(media, pkt)
 			unit, err := source.h264Processor.ProcessPacket(pkt, pts)
 			if err == nil && unit != nil {
-				output <- unit
+				sendUnit(output, unit)
 			}
 		})
 	case *format.Opus:
@@ -131,9 +131,20 @@ func (source *RTSPSource) registerPacketHandler(media *description.Media, stream
 			pts, _ := source.client.PacketPTS(media, pkt)
 			unit, err := source.opusProcessor.ProcessPacket(pkt, pts)
 			if err == nil && unit != nil {
-				output <- unit
+				sendUnit(output, unit)
 			}
 		})
+	}
+}
+
+// sendUnit drops the unit when the channel is full instead of blocking. A
+// blocking send here would deadlock shutdown: once the publish loop exits,
+// nothing drains the channel, the RTP callback would block forever, and
+// closing the RTSP client (and the whole process) would hang.
+func sendUnit(output chan<- *MediaUnit, unit *MediaUnit) {
+	select {
+	case output <- unit:
+	default:
 	}
 }
 

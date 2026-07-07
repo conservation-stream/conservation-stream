@@ -194,7 +194,7 @@ func moqCommand() *ucli.Command {
 			},
 			{
 				Name:  "publish",
-				Usage: "Publish encoded RTSP renditions to MoQ",
+				Usage: "Publish RTSP renditions to MoQ",
 				Flags: moqBaseFlags(true),
 				Action: func(ctx *ucli.Context) error {
 					cfg, err := newMoQPublishConfig(ctx)
@@ -265,7 +265,7 @@ func moqBaseFlags(includeRenditions bool) []ucli.Flag {
 		&ucli.StringFlag{
 			Name:     "in",
 			Usage:    "input RTSP URL",
-			Required: true,
+			Required: !includeRenditions,
 		},
 		&ucli.StringFlag{
 			Name:     "out",
@@ -296,6 +296,9 @@ func moqBaseFlags(includeRenditions bool) []ucli.Flag {
 		flags = append(flags, &ucli.StringSliceFlag{
 			Name:  "rendition",
 			Usage: "rendition as name:WIDTHxHEIGHT:BITRATE or passthrough; repeat for ABR ladders",
+		}, &ucli.StringSliceFlag{
+			Name:  "rendition-source",
+			Usage: "pre-encoded RTSP rendition source as name=rtsp://...; repeat for ABR ladders",
 		}, &ucli.StringFlag{
 			Name:  "video-codec",
 			Usage: "MoQ video codec: h264|h265",
@@ -436,7 +439,7 @@ func validateWebRTCForward(in string, out string) error {
 }
 
 func newMoQForwardConfig(ctx *ucli.Context) (moq.Config, error) {
-	cfg, err := newMoQBaseConfig(ctx)
+	cfg, err := newMoQBaseConfig(ctx, true)
 	if err != nil {
 		return moq.Config{}, err
 	}
@@ -444,7 +447,7 @@ func newMoQForwardConfig(ctx *ucli.Context) (moq.Config, error) {
 }
 
 func newMoQPublishConfig(ctx *ucli.Context) (moq.Config, error) {
-	cfg, err := newMoQBaseConfig(ctx)
+	cfg, err := newMoQBaseConfig(ctx, false)
 	if err != nil {
 		return moq.Config{}, err
 	}
@@ -455,6 +458,13 @@ func newMoQPublishConfig(ctx *ucli.Context) (moq.Config, error) {
 			return moq.Config{}, fmt.Errorf("--rendition %q: %w", raw, err)
 		}
 		cfg.Renditions = append(cfg.Renditions, rendition)
+	}
+	for _, raw := range ctx.StringSlice("rendition-source") {
+		source, err := moq.ParseRenditionSource(raw)
+		if err != nil {
+			return moq.Config{}, fmt.Errorf("--rendition-source %q: %w", raw, err)
+		}
+		cfg.RenditionSources = append(cfg.RenditionSources, source)
 	}
 	cfg.CatalogControl = ctx.String("catalog-control")
 	cfg.CatalogControlDynamic = ctx.String("catalog-control-dynamic")
@@ -469,12 +479,12 @@ func newMoQPublishConfig(ctx *ucli.Context) (moq.Config, error) {
 	return cfg, moq.ValidatePublishConfig(moq.NormalizeConfig(cfg))
 }
 
-func newMoQBaseConfig(ctx *ucli.Context) (moq.Config, error) {
+func newMoQBaseConfig(ctx *ucli.Context, requireInput bool) (moq.Config, error) {
 	in := ctx.String("in")
 	out := ctx.String("out")
 	broadcast := ctx.String("broadcast")
 
-	if err := validateMoQBase(in, out, broadcast); err != nil {
+	if err := validateMoQBase(in, out, broadcast, requireInput); err != nil {
 		return moq.Config{}, err
 	}
 
@@ -498,9 +508,13 @@ func newMoQBaseConfig(ctx *ucli.Context) (moq.Config, error) {
 	}, nil
 }
 
-func validateMoQBase(in string, out string, broadcast string) error {
-	if err := validateURLScheme("--in", in, "rtsp"); err != nil {
-		return err
+func validateMoQBase(in string, out string, broadcast string, requireInput bool) error {
+	if strings.TrimSpace(in) != "" {
+		if err := validateURLScheme("--in", in, "rtsp"); err != nil {
+			return err
+		}
+	} else if requireInput {
+		return fmt.Errorf("--in is required")
 	}
 
 	if err := validateURLScheme("--out", out, "https"); err != nil {

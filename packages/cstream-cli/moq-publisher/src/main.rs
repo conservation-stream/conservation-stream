@@ -3,10 +3,10 @@ mod jit;
 
 use std::path::PathBuf;
 
-use catalog::{FilteredCatalog, Rendition};
+use catalog::{FilteredCatalog, Rendition, RenditionSource};
 use clap::Parser;
 use hang::moq_net;
-use jit::{JitPublisher, SourceConfig, VideoCodec};
+use jit::{JitPublisher, RtspRenditionSource, SourceConfig, VideoCodec};
 use moq_mux::container::fmp4;
 use url::Url;
 
@@ -40,6 +40,10 @@ struct Cli {
     #[arg(long = "rendition")]
     renditions: Vec<Rendition>,
 
+    /// Pre-encoded RTSP source for a rendition, as name=rtsp://...
+    #[arg(long = "rendition-source")]
+    rendition_sources: Vec<RenditionSource>,
+
     /// Limit the catalog to these configured rendition names.
     #[arg(long = "advertise-rendition")]
     advertise_renditions: Vec<String>,
@@ -66,25 +70,62 @@ enum PublishSource {
 }
 
 impl Publish {
-    fn new(
+    async fn new(
         renditions: Vec<Rendition>,
+        rendition_sources: Vec<RenditionSource>,
         advertise_renditions: Vec<String>,
         source_rtsp: Option<String>,
         video_codec: VideoCodec,
     ) -> anyhow::Result<Self> {
         let mut broadcast = moq_net::Broadcast::new().produce();
-        let filtered_catalog =
-            FilteredCatalog::new(&mut broadcast, renditions.clone(), advertise_renditions)?;
+        let (catalog_renditions, source_config) = if rendition_sources.is_empty() {
+            let source_config = source_rtsp.as_ref().map(|rtsp_url| SourceConfig {
+                sources: renditions
+                    .iter()
+                    .cloned()
+                    .map(|rendition| RtspRenditionSource {
+                        rtsp_url: rtsp_url.clone(),
+                        video_codec,
+                        rendition,
+                    })
+                    .collect(),
+            });
+            (renditions, source_config)
+        } else {
+            let mut catalog_renditions = Vec::with_capacity(rendition_sources.len());
+            let mut sources = Vec::with_capacity(rendition_sources.len());
 
-        let source = if let Some(rtsp_url) = source_rtsp {
+            for source in rendition_sources {
+                let probe = jit::probe_rtsp_source(&source.rtsp_url).await?;
+                tracing::info!(
+                    rendition = %source.name,
+                    codec = %probe.video_codec,
+                    bitrate = ?probe.bitrate,
+                    "probed RTSP rendition source"
+                );
+                let rendition = Rendition::passthrough(source.name, probe.bitrate);
+                catalog_renditions.push(rendition.clone());
+                sources.push(RtspRenditionSource {
+                    rtsp_url: source.rtsp_url,
+                    video_codec: probe.video_codec,
+                    rendition,
+                });
+            }
+
+            (catalog_renditions, Some(SourceConfig { sources }))
+        };
+
+        let filtered_catalog = FilteredCatalog::new(
+            &mut broadcast,
+            catalog_renditions.clone(),
+            advertise_renditions,
+        )?;
+
+        let source = if let Some(source_config) = source_config {
             PublishSource::Jit(JitPublisher::new(
                 &mut broadcast,
                 filtered_catalog,
-                SourceConfig {
-                    rtsp_url,
-                    video_codec,
-                    renditions,
-                },
+                source_config,
             )?)
         } else {
             let mut scratch_broadcast = moq_net::Broadcast::new().produce();
@@ -149,10 +190,21 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     cli.log.init()?;
 
-    anyhow::ensure!(
-        !cli.renditions.is_empty(),
-        "at least one --rendition is required"
-    );
+    if !cli.rendition_sources.is_empty() {
+        anyhow::ensure!(
+            cli.source_rtsp.is_none(),
+            "--source-rtsp cannot be combined with --rendition-source"
+        );
+        anyhow::ensure!(
+            cli.renditions.is_empty(),
+            "--rendition cannot be combined with --rendition-source"
+        );
+    } else {
+        anyhow::ensure!(
+            !cli.renditions.is_empty(),
+            "at least one --rendition or --rendition-source is required"
+        );
+    }
 
     let mut advertise_renditions = cli.advertise_renditions;
     if let Some(path) = &cli.catalog_control {
@@ -169,10 +221,12 @@ async fn main() -> anyhow::Result<()> {
 
     let publish = Publish::new(
         cli.renditions,
+        cli.rendition_sources,
         advertise_renditions,
         cli.source_rtsp,
         cli.video_codec,
-    )?;
+    )
+    .await?;
 
     if let Some(path) = cli.catalog_control {
         let catalog = publish.catalog();

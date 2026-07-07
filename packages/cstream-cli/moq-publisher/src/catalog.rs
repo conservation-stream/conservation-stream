@@ -20,6 +20,19 @@ pub struct Rendition {
     pub passthrough: bool,
 }
 
+impl Rendition {
+    pub fn passthrough(name: impl Into<String>, bitrate: Option<u64>) -> Self {
+        Self {
+            name: name.into(),
+            width: 0,
+            height: 0,
+            bitrate_arg: String::new(),
+            bitrate,
+            passthrough: true,
+        }
+    }
+}
+
 impl std::str::FromStr for Rendition {
     type Err = anyhow::Error;
 
@@ -79,6 +92,31 @@ impl std::str::FromStr for Rendition {
             bitrate_arg: parts[2].trim().to_string(),
             bitrate: parse_bitrate(parts[2].trim())?,
             passthrough: false,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RenditionSource {
+    pub name: String,
+    pub rtsp_url: String,
+}
+
+impl std::str::FromStr for RenditionSource {
+    type Err = anyhow::Error;
+
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
+        let (name, rtsp_url) = raw
+            .trim()
+            .split_once('=')
+            .context("rendition source must use name=rtsp://...")?;
+        let name = validate_rendition_name(name)?;
+        let rtsp_url = rtsp_url.trim();
+        anyhow::ensure!(!rtsp_url.is_empty(), "rendition source URL is required");
+
+        Ok(Self {
+            name,
+            rtsp_url: rtsp_url.to_string(),
         })
     }
 }
@@ -423,6 +461,21 @@ mod tests {
                 bitrate_arg: String::new(),
                 bitrate: None,
                 passthrough: true,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_rendition_source() {
+        let got: RenditionSource = "720p=rtsp://camera.local/high?token=a=b"
+            .parse()
+            .expect("parse rendition source");
+
+        assert_eq!(
+            got,
+            RenditionSource {
+                name: "720p".to_string(),
+                rtsp_url: "rtsp://camera.local/high?token=a=b".to_string(),
             }
         );
     }

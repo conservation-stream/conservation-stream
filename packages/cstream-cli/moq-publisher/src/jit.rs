@@ -1,12 +1,16 @@
 use std::{
+    pin::Pin,
     process::Stdio,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
+use anyhow::Context;
 use bytes::{BufMut, Bytes, BytesMut};
+use futures::{Stream, StreamExt};
 use hang::moq_net;
 use tokio::{io::AsyncReadExt, process::Command};
+use url::Url;
 
 use crate::catalog::{FilteredCatalog, Rendition};
 
@@ -39,9 +43,14 @@ impl std::fmt::Display for VideoCodec {
 
 #[derive(Clone)]
 pub struct SourceConfig {
+    pub sources: Vec<RtspRenditionSource>,
+}
+
+#[derive(Clone)]
+pub struct RtspRenditionSource {
     pub rtsp_url: String,
     pub video_codec: VideoCodec,
-    pub renditions: Vec<Rendition>,
+    pub rendition: Rendition,
 }
 
 pub struct JitPublisher {
@@ -70,18 +79,13 @@ impl JitPublisher {
     }
 
     pub async fn run(self) -> anyhow::Result<()> {
-        for rendition in self.source.renditions {
-            let rtsp_url = self.source.rtsp_url.clone();
-            let video_codec = self.source.video_codec;
+        for source in self.source.sources {
             let catalog = self.catalog.clone();
             let clock = self.clock;
             let tracks = self.tracks.clone();
 
             tokio::spawn(async move {
-                if let Err(err) =
-                    run_rendition_worker(rtsp_url, video_codec, rendition, tracks, catalog, clock)
-                        .await
-                {
+                if let Err(err) = run_rendition_worker(source, tracks, catalog, clock).await {
                     tracing::error!(?err, "rendition worker exited");
                 }
             });
@@ -93,40 +97,26 @@ impl JitPublisher {
 }
 
 async fn run_rendition_worker(
-    rtsp_url: String,
-    video_codec: VideoCodec,
-    rendition: Rendition,
+    source: RtspRenditionSource,
     tracks: BroadcastTracks,
     catalog: FilteredCatalog,
     clock: MediaClock,
 ) -> anyhow::Result<()> {
     loop {
-        wait_until_active(&rendition.name, &catalog).await;
+        wait_until_active(&source.rendition.name, &catalog).await;
 
-        let mut session =
-            seed_rendition(&rtsp_url, video_codec, &rendition, &tracks, catalog.clone()).await?;
+        let exit = if source.rendition.passthrough {
+            run_rtsp_passthrough_while_active(&source, &tracks, &catalog).await
+        } else {
+            run_ffmpeg_encoder_while_active(&source, &tracks, &catalog, clock).await
+        };
 
-        tracing::info!(
-            rendition = %rendition.name,
-            track = %session.track.name,
-            "starting active rendition encoder"
-        );
-
-        match run_encoder_while_active(
-            &rtsp_url,
-            video_codec,
-            &rendition,
-            &catalog,
-            &mut session,
-            clock,
-        )
-        .await
-        {
+        match exit {
             Ok(EncoderExit::Inactive) => {
-                catalog.remove_label(&rendition.name)?;
+                catalog.remove_label(&source.rendition.name)?;
             }
             Err(err) => {
-                tracing::warn!(rendition = %rendition.name, ?err, "rendition encoder stopped");
+                tracing::warn!(rendition = %source.rendition.name, ?err, "rendition worker stopped");
             }
         }
     }
@@ -225,7 +215,135 @@ impl VideoImport {
     }
 }
 
-async fn seed_rendition(
+async fn run_rtsp_passthrough_while_active(
+    source: &RtspRenditionSource,
+    tracks: &BroadcastTracks,
+    catalog: &FilteredCatalog,
+) -> anyhow::Result<EncoderExit> {
+    let mut rtsp = open_rtsp_frame_stream(&source.rtsp_url, Some(source.video_codec)).await?;
+    let mut session = seed_rendition_from_rtsp(
+        &mut rtsp,
+        source.video_codec,
+        &source.rendition,
+        tracks,
+        catalog.clone(),
+    )
+    .await?;
+
+    tracing::info!(
+        rendition = %source.rendition.name,
+        track = %session.track.name,
+        "starting active RTSP/RTP rendition reader"
+    );
+
+    let mut active_check = tokio::time::interval(Duration::from_millis(100));
+
+    loop {
+        tokio::select! {
+            frame = rtsp.next_video_frame() => {
+                let Some(mut frame) = frame? else {
+                    anyhow::bail!("RTSP source ended");
+                };
+                session.import.decode_frame(&mut frame.data, Some(frame.timestamp))?;
+                catalog.upsert_video_catalog(&source.rendition.name, session.scratch_catalog.snapshot())?;
+            }
+            _ = active_check.tick() => {
+                if !catalog.is_active(&source.rendition.name) {
+                    tracing::info!(
+                        rendition = %source.rendition.name,
+                        track = %session.track.name,
+                        "stopping unadvertised RTSP/RTP rendition reader"
+                    );
+                    return Ok(EncoderExit::Inactive);
+                }
+            }
+        }
+    }
+}
+
+async fn run_ffmpeg_encoder_while_active(
+    source: &RtspRenditionSource,
+    tracks: &BroadcastTracks,
+    catalog: &FilteredCatalog,
+    clock: MediaClock,
+) -> anyhow::Result<EncoderExit> {
+    let mut session = seed_rendition_with_ffmpeg(
+        &source.rtsp_url,
+        source.video_codec,
+        &source.rendition,
+        tracks,
+        catalog.clone(),
+    )
+    .await?;
+
+    tracing::info!(
+        rendition = %source.rendition.name,
+        track = %session.track.name,
+        "starting active rendition encoder"
+    );
+
+    run_encoder_while_active(
+        &source.rtsp_url,
+        source.video_codec,
+        &source.rendition,
+        catalog,
+        &mut session,
+        clock,
+    )
+    .await
+}
+
+async fn seed_rendition_from_rtsp(
+    rtsp: &mut RtspFrameStream,
+    video_codec: VideoCodec,
+    rendition: &Rendition,
+    tracks: &BroadcastTracks,
+    catalog: FilteredCatalog,
+) -> anyhow::Result<RenditionSession> {
+    tracing::info!(rendition = %rendition.name, "seeding rendition catalog from RTSP/RTP");
+
+    let mut scratch_broadcast = moq_net::Broadcast::new().produce();
+    let scratch_catalog = moq_mux::catalog::Producer::new(&mut scratch_broadcast)?;
+    let mut import = tracks.video_import(video_codec, scratch_catalog.clone())?;
+    let mut seed = ParameterSetSeed::new(video_codec);
+
+    let mut seed_frame = tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            let Some(frame) = rtsp.next_video_frame().await? else {
+                anyhow::bail!("RTSP source ended before {}", seed.description());
+            };
+            let mut scan = frame.data.clone();
+            let mut nals = moq_mux::codec::annexb::NalIterator::new(&mut scan);
+            while let Some(nal) = nals.next().transpose()? {
+                if seed.observe(&nal)? {
+                    return Ok::<_, anyhow::Error>(frame);
+                }
+            }
+        }
+    })
+    .await
+    .map_err(|_| anyhow::anyhow!("timed out waiting for {} seed", seed.description()))??;
+
+    import.initialize(seed.init_mut())?;
+    let track = import.track()?.clone();
+    catalog.upsert_video_catalog(&rendition.name, scratch_catalog.snapshot())?;
+    import.decode_frame(&mut seed_frame.data, Some(seed_frame.timestamp))?;
+    catalog.upsert_video_catalog(&rendition.name, scratch_catalog.snapshot())?;
+
+    tracing::info!(
+        rendition = %rendition.name,
+        track = %track.name,
+        "seeded rendition catalog from RTSP/RTP"
+    );
+
+    Ok(RenditionSession {
+        import,
+        scratch_catalog,
+        track,
+    })
+}
+
+async fn seed_rendition_with_ffmpeg(
     rtsp_url: &str,
     video_codec: VideoCodec,
     rendition: &Rendition,
@@ -333,6 +451,116 @@ async fn run_encoder_while_active(
             }
         }
     }
+}
+
+type DemuxedStream =
+    Pin<Box<dyn Stream<Item = Result<retina::codec::CodecItem, retina::Error>> + Send>>;
+
+struct RtspFrame {
+    data: BytesMut,
+    timestamp: moq_mux::container::Timestamp,
+}
+
+struct RtspFrameStream {
+    stream_id: usize,
+    frames: DemuxedStream,
+}
+
+impl RtspFrameStream {
+    async fn next_video_frame(&mut self) -> anyhow::Result<Option<RtspFrame>> {
+        while let Some(item) = self.frames.next().await {
+            match item? {
+                retina::codec::CodecItem::VideoFrame(frame)
+                    if frame.stream_id() == self.stream_id =>
+                {
+                    return Ok(Some(RtspFrame {
+                        timestamp: retina_timestamp_to_moq(frame.timestamp())?,
+                        data: BytesMut::from(frame.data()),
+                    }));
+                }
+                _ => {}
+            }
+        }
+
+        Ok(None)
+    }
+}
+
+async fn open_rtsp_frame_stream(
+    raw_url: &str,
+    expected_codec: Option<VideoCodec>,
+) -> anyhow::Result<RtspFrameStream> {
+    let (url, credentials) = rtsp_url_and_credentials(raw_url)?;
+    let mut session = retina::client::Session::describe(
+        url,
+        retina::client::SessionOptions::default()
+            .creds(credentials)
+            .user_agent("cstream-moq-publisher".to_string()),
+    )
+    .await?;
+
+    let stream_id = session
+        .streams()
+        .iter()
+        .position(|stream| {
+            stream.media() == "video"
+                && video_codec_from_rtsp_encoding(stream.encoding_name())
+                    .is_some_and(|codec| expected_codec.is_none_or(|expected| expected == codec))
+        })
+        .context("RTSP source did not offer the expected H.264/H.265 video stream")?;
+
+    session
+        .setup(
+            stream_id,
+            retina::client::SetupOptions::default()
+                .transport(retina::client::Transport::Tcp(
+                    retina::client::TcpTransportOptions::default(),
+                ))
+                .frame_format(retina::codec::FrameFormat::SIMPLE),
+        )
+        .await?;
+
+    let demuxed = session
+        .play(retina::client::PlayOptions::default())
+        .await?
+        .demuxed()?;
+
+    Ok(RtspFrameStream {
+        stream_id,
+        frames: Box::pin(demuxed),
+    })
+}
+
+fn rtsp_url_and_credentials(
+    raw_url: &str,
+) -> anyhow::Result<(Url, Option<retina::client::Credentials>)> {
+    let mut url = Url::parse(raw_url).context("parse RTSP URL")?;
+    let username = url.username().to_string();
+    if username.is_empty() {
+        return Ok((url, None));
+    }
+
+    let password = url.password().unwrap_or_default().to_string();
+    url.set_username("")
+        .map_err(|_| anyhow::anyhow!("failed to strip username from RTSP URL"))?;
+    url.set_password(None)
+        .map_err(|_| anyhow::anyhow!("failed to strip password from RTSP URL"))?;
+
+    Ok((
+        url,
+        Some(retina::client::Credentials { username, password }),
+    ))
+}
+
+fn retina_timestamp_to_moq(
+    timestamp: retina::Timestamp,
+) -> anyhow::Result<moq_mux::container::Timestamp> {
+    let elapsed = timestamp.elapsed();
+    anyhow::ensure!(elapsed >= 0, "RTSP frame timestamp was before stream start");
+    let micros = (elapsed as u128 * 1_000_000) / timestamp.clock_rate().get() as u128;
+    Ok(moq_mux::container::Timestamp::from_micros(
+        u64::try_from(micros).context("RTSP timestamp overflow")?,
+    )?)
 }
 
 struct AnnexBAccessUnits {
@@ -674,6 +902,69 @@ fn raw_muxer(codec: VideoCodec) -> &'static str {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StreamProbe {
+    pub video_codec: VideoCodec,
+    pub bitrate: Option<u64>,
+}
+
+pub async fn probe_rtsp_source(rtsp_url: &str) -> anyhow::Result<StreamProbe> {
+    let (url, credentials) = rtsp_url_and_credentials(rtsp_url)?;
+    let session = tokio::time::timeout(
+        Duration::from_secs(15),
+        retina::client::Session::describe(
+            url,
+            retina::client::SessionOptions::default()
+                .creds(credentials)
+                .user_agent("cstream-moq-publisher".to_string()),
+        ),
+    )
+    .await
+    .context("timed out probing RTSP rendition source")??;
+
+    let stream = session
+        .streams()
+        .iter()
+        .find(|stream| stream.media() == "video")
+        .context("RTSP source did not report a video stream")?;
+    let video_codec = video_codec_from_rtsp_encoding(stream.encoding_name())
+        .context("RTSP video stream is not H.264 or H.265")?;
+
+    Ok(StreamProbe {
+        video_codec,
+        bitrate: bitrate_from_rtsp_url(rtsp_url),
+    })
+}
+
+fn video_codec_from_rtsp_encoding(encoding_name: &str) -> Option<VideoCodec> {
+    match encoding_name.to_ascii_lowercase().as_str() {
+        "h264" => Some(VideoCodec::H264),
+        "h265" | "hevc" => Some(VideoCodec::H265),
+        _ => None,
+    }
+}
+
+fn bitrate_from_rtsp_url(raw: &str) -> Option<u64> {
+    let url = url::Url::parse(raw).ok()?;
+    for (key, value) in url.query_pairs() {
+        if matches!(
+            key.to_ascii_lowercase().as_str(),
+            "videobitrate" | "videomaxbitrate" | "bitrate"
+        ) {
+            let value: u64 = value.parse().ok()?;
+            if value == 0 {
+                return None;
+            }
+            return Some(if value < 100_000 {
+                value * 1_000
+            } else {
+                value
+            });
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -735,5 +1026,45 @@ mod tests {
 
         assert!(is_slice_nal(VideoCodec::H265, &[2, 1]).unwrap());
         assert!(!is_slice_nal(VideoCodec::H265, &[64, 1]).unwrap());
+    }
+
+    #[test]
+    fn rtsp_encoding_names_detect_h264_and_h265() {
+        assert_eq!(
+            video_codec_from_rtsp_encoding("H264"),
+            Some(VideoCodec::H264)
+        );
+        assert_eq!(
+            video_codec_from_rtsp_encoding("h265"),
+            Some(VideoCodec::H265)
+        );
+        assert_eq!(
+            video_codec_from_rtsp_encoding("HEVC"),
+            Some(VideoCodec::H265)
+        );
+        assert_eq!(video_codec_from_rtsp_encoding("jpeg"), None);
+    }
+
+    #[test]
+    fn rtsp_url_credentials_are_moved_to_retina_options() {
+        let (url, credentials) =
+            rtsp_url_and_credentials("rtsp://user:pass@camera.local/live?camera=1").unwrap();
+
+        assert_eq!(url.as_str(), "rtsp://camera.local/live?camera=1");
+        assert_eq!(
+            credentials,
+            Some(retina::client::Credentials {
+                username: "user".to_string(),
+                password: "pass".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn rtsp_url_bitrate_fallback_treats_axis_values_as_kbps() {
+        assert_eq!(
+            bitrate_from_rtsp_url("rtsp://camera.local/live?videomaxbitrate=6000"),
+            Some(6_000_000)
+        );
     }
 }

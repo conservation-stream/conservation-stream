@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 
 	"cstream-cli/internal/forward"
@@ -448,6 +449,98 @@ func TestMoQPublishBuildsRenditionConfig(t *testing.T) {
 	}
 }
 
+func TestMoQPublishBuildsRenditionSourceConfig(t *testing.T) {
+	var gotConfig moq.Config
+	var runCalled bool
+
+	withMoQPublishRunnerStub(t, func(cfg moq.Config) (moqRunner, error) {
+		gotConfig = cfg
+		return stubMoQRunner{
+			run: func(ctx context.Context) error {
+				runCalled = true
+				return nil
+			},
+		}, nil
+	})
+
+	err := run([]string{
+		"cstream",
+		"moq",
+		"publish",
+		"--out",
+		"https://cdn.moq.dev/anon",
+		"--broadcast",
+		"my-stream.hang",
+		"--rendition-source",
+		"720p=rtsp://camera.local/high",
+		"--rendition-source",
+		"360p=rtsp://camera.local/low?token=a=b",
+		"--catalog-control",
+		"/tmp/catalog.json",
+	}, io.Discard, io.Discard)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if !runCalled {
+		t.Fatal("expected MoQ publish runner to run")
+	}
+	if gotConfig.RTSPSourceURL != "" {
+		t.Fatalf("expected no shared RTSP source, got %q", gotConfig.RTSPSourceURL)
+	}
+	if len(gotConfig.RenditionSources) != 2 {
+		t.Fatalf("expected two rendition sources, got %+v", gotConfig.RenditionSources)
+	}
+	if gotConfig.RenditionSources[0] != (moq.RenditionSource{Name: "720p", RTSPURL: "rtsp://camera.local/high"}) {
+		t.Fatalf("unexpected first rendition source: %+v", gotConfig.RenditionSources[0])
+	}
+	if gotConfig.RenditionSources[1] != (moq.RenditionSource{Name: "360p", RTSPURL: "rtsp://camera.local/low?token=a=b"}) {
+		t.Fatalf("unexpected second rendition source: %+v", gotConfig.RenditionSources[1])
+	}
+	if gotConfig.CatalogControl != "/tmp/catalog.json" {
+		t.Fatalf("unexpected catalog control path: %q", gotConfig.CatalogControl)
+	}
+}
+
+func TestMoQPublishBuildsDefaultAxisRenditionSources(t *testing.T) {
+	var gotConfig moq.Config
+
+	withMoQPublishRunnerStub(t, func(cfg moq.Config) (moqRunner, error) {
+		gotConfig = moq.NormalizeConfig(cfg)
+		return stubMoQRunner{}, nil
+	})
+
+	err := run([]string{
+		"cstream",
+		"moq",
+		"publish",
+		"--in",
+		"rtsp://camera.local/axis-media/media.amp?camera=1",
+		"--out",
+		"https://cdn.moq.dev/anon",
+		"--broadcast",
+		"my-stream.hang",
+		"--video-codec",
+		"h265",
+	}, io.Discard, io.Discard)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if gotConfig.RTSPSourceURL != "" {
+		t.Fatalf("expected generated sources to consume shared input, got %q", gotConfig.RTSPSourceURL)
+	}
+	if len(gotConfig.RenditionSources) != 2 {
+		t.Fatalf("expected two generated rendition sources, got %+v", gotConfig.RenditionSources)
+	}
+	if gotConfig.RenditionSources[0].Name != "low" || !strings.Contains(gotConfig.RenditionSources[0].RTSPURL, "videocodec=h265") {
+		t.Fatalf("unexpected low source: %+v", gotConfig.RenditionSources[0])
+	}
+	if gotConfig.RenditionSources[1].Name != "high" || !strings.Contains(gotConfig.RenditionSources[1].RTSPURL, "videokeyframeinterval=60") {
+		t.Fatalf("unexpected high source: %+v", gotConfig.RenditionSources[1])
+	}
+}
+
 func TestMoQPublishBuildsDynamicCatalogControlConfig(t *testing.T) {
 	var gotConfig moq.Config
 
@@ -534,10 +627,10 @@ func TestMoQForwardRejectsInvalidBroadcast(t *testing.T) {
 	}
 }
 
-func TestMoQPublishRequiresRendition(t *testing.T) {
-	err := run([]string{"cstream", "moq", "publish", "--in", "rtsp://in.local/live", "--out", "https://cdn.moq.dev/anon", "--broadcast", "stream.hang"}, io.Discard, io.Discard)
+func TestMoQPublishRequiresInputOrRenditions(t *testing.T) {
+	err := run([]string{"cstream", "moq", "publish", "--out", "https://cdn.moq.dev/anon", "--broadcast", "stream.hang"}, io.Discard, io.Discard)
 	if err == nil {
-		t.Fatal("expected error when MoQ publish has no renditions")
+		t.Fatal("expected error when MoQ publish has no input or renditions")
 	}
 }
 

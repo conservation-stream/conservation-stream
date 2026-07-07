@@ -8,7 +8,9 @@ go run ./cmd/cstream rtsp publish --in rtsp://source/live --out rtmp://target/li
 go run ./cmd/cstream rtsp publish --in rtsp://source/live --out rtsp://target/live --dynamic wss://api.example.com/config --base-bitrate 100 --height 720 --width 1280 --rate 30/1
 go run ./cmd/cstream webrtc forward --in rtsp://source/live --out https://whip.example.com/endpoint
 go run ./cmd/cstream moq forward --in rtsp://source/live --out https://cdn.moq.dev/anon --broadcast unique-name.hang
+go run ./cmd/cstream moq publish --in rtsp://camera/axis-media/media.amp?camera=1 --out https://cdn.moq.dev/anon --broadcast unique-name.hang --video-codec h265 --catalog-control ./catalog-control.json
 go run ./cmd/cstream moq publish --in rtsp://source/live --out https://cdn.moq.dev/anon --broadcast unique-name.hang --video-codec h265 --rendition passthrough --rendition 720p:1280x720:2500k --rendition 360p:640x360:800k --catalog-control ./catalog-control.json --catalog-control-dynamic ws://localhost:8080/catalog
+go run ./cmd/cstream moq publish --out https://cdn.moq.dev/anon --broadcast unique-name.hang --rendition-source 720p=rtsp://camera/high --rendition-source 360p=rtsp://camera/low --catalog-control ./catalog-control.json
 go run ./cmd/cstream version
 ```
 
@@ -34,7 +36,35 @@ MoQ forward mode shells out to `ffmpeg` and `moq-cli`: FFmpeg reads the RTSP inp
 
 ## MoQ publish renditions
 
-`moq publish` encodes one or more video renditions through `cstream-moq-publisher`, a small Hang/MoQ publisher that owns the broadcast catalog:
+`moq publish` publishes one or more video renditions through `cstream-moq-publisher`, a small Hang/MoQ publisher that owns the broadcast catalog.
+
+For Axis cameras, the simplest form uses `--in` as a camera shortcut. If no explicit `--rendition` or `--rendition-source` is provided, cstream builds two H.265/H.264 RTSP rendition URLs from the camera URL and publishes both without transcoding:
+
+```bash
+cstream moq publish \
+  --in rtsp://camera.local/axis-media/media.amp?camera=1 \
+  --out https://cdn.moq.dev/anon \
+  --broadcast unique-name.hang \
+  --video-codec h265 \
+  --catalog-control ./catalog-control.json
+```
+
+The generated sources are `low` (`640x360`, short keyframe interval, lower bitrate) and `high` (`1280x720`, longer keyframe interval, higher bitrate). This is the preferred path when the camera can produce the variants itself.
+
+To publish separate pre-encoded camera or encoder outputs without transcoding, pass one RTSP source per rendition:
+
+```bash
+cstream moq publish \
+  --out https://cdn.moq.dev/anon \
+  --broadcast unique-name.hang \
+  --rendition-source 720p=rtsp://camera.local/high \
+  --rendition-source 360p=rtsp://camera.local/low \
+  --catalog-control ./catalog-control.json
+```
+
+Each `--rendition-source` uses `name=rtsp://...`; `--in` is optional and should be omitted in this mode. cstream opens each source as RTSP/RTP directly, requests depacketized Annex B frames, detects H.264 vs H.265 from RTSP metadata, and feeds those frames into `moq-mux` without FFmpeg or re-encoding. For Axis-style URLs, `videobitrate`, `videomaxbitrate`, or `bitrate` query values are used as the catalog bitrate when present.
+
+The older single-input encode mode remains available:
 
 ```bash
 cstream moq publish \

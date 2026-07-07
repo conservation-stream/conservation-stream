@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 )
 
 type Runner interface {
@@ -54,20 +55,36 @@ func (runner *WHIPRunner) Run(ctx context.Context) error {
 	workers.Add(1)
 	go func() {
 		defer workers.Done()
+		failPublish := func(err error) {
+			select {
+			case publishErrChannel <- err:
+			default:
+			}
+			cancel()
+		}
+
+		// Watchdog: an RTSP source can stop delivering media without the
+		// underlying connection erroring; treat prolonged silence as fatal.
+		stallTimer := time.NewTimer(runner.cfg.SourceStallTimeout)
+		defer stallTimer.Stop()
+
 		for {
 			select {
 			case <-ctx.Done():
+				return
+			case <-stallTimer.C:
+				failPublish(fmt.Errorf("RTSP source stalled: no media received for %s", runner.cfg.SourceStallTimeout))
 				return
 			case unit := <-runner.units:
 				if unit == nil {
 					continue
 				}
+				if !stallTimer.Stop() {
+					<-stallTimer.C
+				}
+				stallTimer.Reset(runner.cfg.SourceStallTimeout)
 				if err := runner.publisher.Publish(unit); err != nil {
-					select {
-					case publishErrChannel <- err:
-					default:
-					}
-					cancel()
+					failPublish(err)
 					return
 				}
 			}
@@ -93,10 +110,16 @@ func (runner *WHIPRunner) Run(ctx context.Context) error {
 		runErr = err
 	case err := <-receiveErrChannel:
 		runErr = err
+	case err := <-runner.publisher.Failed():
+		runErr = err
 	}
 
 	cancel()
 	workers.Wait()
+
+	if runErr != nil {
+		runner.logger.Printf("webrtc forward terminating: %v", runErr)
+	}
 
 	if runErr == context.Canceled && ctx.Err() == context.Canceled {
 		return ctx.Err()

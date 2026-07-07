@@ -59,7 +59,7 @@ func (runner *PublishRunner) Run(ctx context.Context) error {
 		"cstream-moq-publisher",
 		cstreamMoQPublisherArgs(runner.cfg),
 		runner.cfg.CommandLogWriter,
-		fmt.Sprintf("publishing RTSP renditions to MoQ relay=%s broadcast=%s codec=%s renditions=%d\n", runner.cfg.RelayURL, runner.cfg.Broadcast, runner.cfg.VideoCodec, len(runner.cfg.Renditions)),
+		publishStartMessage(runner.cfg),
 	)
 }
 
@@ -98,7 +98,7 @@ func (runner *PublishRunner) runWithDynamicCatalogControl(ctx context.Context) e
 			"cstream-moq-publisher",
 			cstreamMoQPublisherArgs(cfg),
 			cfg.CommandLogWriter,
-			fmt.Sprintf("publishing RTSP renditions to MoQ relay=%s broadcast=%s codec=%s renditions=%d\n", cfg.RelayURL, cfg.Broadcast, cfg.VideoCodec, len(cfg.Renditions)),
+			publishStartMessage(cfg),
 		)
 	}()
 
@@ -268,20 +268,32 @@ func cstreamMoQPublisherArgs(cfg Config) []string {
 		args = append(args, "--tls-disable-verify")
 	}
 
+	if len(cfg.RenditionSources) == 0 {
+		args = append(args,
+			"--source-rtsp",
+			cfg.RTSPSourceURL,
+			"--video-codec",
+			cfg.VideoCodec,
+		)
+	}
+
 	args = append(args,
-		"--source-rtsp",
-		cfg.RTSPSourceURL,
-		"--video-codec",
-		cfg.VideoCodec,
 		"--url",
 		cfg.RelayURL,
 		"--broadcast",
 		cfg.Broadcast,
 	)
 
-	for _, rendition := range cfg.Renditions {
-		args = append(args, "--rendition", formatRendition(rendition))
-		args = append(args, "--advertise-rendition", rendition.Name)
+	if len(cfg.RenditionSources) > 0 {
+		for _, source := range cfg.RenditionSources {
+			args = append(args, "--rendition-source", formatRenditionSource(source))
+			args = append(args, "--advertise-rendition", source.Name)
+		}
+	} else {
+		for _, rendition := range cfg.Renditions {
+			args = append(args, "--rendition", formatRendition(rendition))
+			args = append(args, "--advertise-rendition", rendition.Name)
+		}
 	}
 
 	if cfg.CatalogControl != "" {
@@ -289,6 +301,13 @@ func cstreamMoQPublisherArgs(cfg Config) []string {
 	}
 
 	return args
+}
+
+func publishStartMessage(cfg Config) string {
+	if len(cfg.RenditionSources) > 0 {
+		return fmt.Sprintf("publishing RTSP rendition sources to MoQ relay=%s broadcast=%s renditions=%d\n", cfg.RelayURL, cfg.Broadcast, len(cfg.RenditionSources))
+	}
+	return fmt.Sprintf("publishing RTSP renditions to MoQ relay=%s broadcast=%s codec=%s renditions=%d\n", cfg.RelayURL, cfg.Broadcast, cfg.VideoCodec, len(cfg.Renditions))
 }
 
 func formatRendition(rendition Rendition) string {
@@ -299,4 +318,8 @@ func formatRendition(rendition Rendition) string {
 		return fmt.Sprintf("%s:passthrough", rendition.Name)
 	}
 	return fmt.Sprintf("%s:%dx%d:%s", rendition.Name, rendition.Width, rendition.Height, rendition.Bitrate)
+}
+
+func formatRenditionSource(source RenditionSource) string {
+	return fmt.Sprintf("%s=%s", source.Name, source.RTSPURL)
 }

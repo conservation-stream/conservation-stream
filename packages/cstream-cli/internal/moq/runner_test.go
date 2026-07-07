@@ -1,6 +1,7 @@
 package moq
 
 import (
+	"net/url"
 	"reflect"
 	"testing"
 )
@@ -106,6 +107,43 @@ func TestCstreamMoQPublisherArgs(t *testing.T) {
 	}
 }
 
+func TestCstreamMoQPublisherArgsWithRenditionSources(t *testing.T) {
+	got := cstreamMoQPublisherArgs(Config{
+		RelayURL:         "https://relay.example.com/anon",
+		Broadcast:        "stream.hang",
+		ClientBind:       "0.0.0.0:0",
+		TLSDisableVerify: true,
+		CatalogControl:   "/tmp/catalog.json",
+		RenditionSources: []RenditionSource{
+			{Name: "720p", RTSPURL: "rtsp://camera.local/high"},
+			{Name: "360p", RTSPURL: "rtsp://camera.local/low?token=a=b"},
+		},
+	})
+	want := []string{
+		"--client-bind",
+		"0.0.0.0:0",
+		"--tls-disable-verify",
+		"--url",
+		"https://relay.example.com/anon",
+		"--broadcast",
+		"stream.hang",
+		"--rendition-source",
+		"720p=rtsp://camera.local/high",
+		"--advertise-rendition",
+		"720p",
+		"--rendition-source",
+		"360p=rtsp://camera.local/low?token=a=b",
+		"--advertise-rendition",
+		"360p",
+		"--catalog-control",
+		"/tmp/catalog.json",
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected cstream-moq-publisher args:\n got: %#v\nwant: %#v", got, want)
+	}
+}
+
 func TestParseRendition(t *testing.T) {
 	got, err := ParseRendition("720p:1280x720:2500k")
 	if err != nil {
@@ -145,5 +183,52 @@ func TestParseNamedPassthroughRendition(t *testing.T) {
 func TestParseRenditionRejectsInvalidShape(t *testing.T) {
 	if _, err := ParseRendition("720p:1280x720"); err == nil {
 		t.Fatal("expected invalid rendition shape to fail")
+	}
+}
+
+func TestParseRenditionSource(t *testing.T) {
+	got, err := ParseRenditionSource("720p=rtsp://camera.local/high?token=a=b")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	want := RenditionSource{Name: "720p", RTSPURL: "rtsp://camera.local/high?token=a=b"}
+	if got != want {
+		t.Fatalf("unexpected rendition source: got %+v want %+v", got, want)
+	}
+}
+
+func TestNormalizeConfigBuildsDefaultAxisH265Sources(t *testing.T) {
+	got := NormalizeConfig(Config{
+		RTSPSourceURL: "rtsp://user:pass@camera.local/axis-media/media.amp?camera=1&h264profile=baseline",
+		RelayURL:      "https://cdn.moq.dev/anon",
+		Broadcast:     "stream.hang",
+		VideoCodec:    "h265",
+	})
+
+	if got.RTSPSourceURL != "" {
+		t.Fatalf("expected shared RTSP input to be consumed, got %q", got.RTSPSourceURL)
+	}
+	if len(got.RenditionSources) != 2 {
+		t.Fatalf("expected two generated rendition sources, got %+v", got.RenditionSources)
+	}
+
+	lowURL, err := url.Parse(got.RenditionSources[0].RTSPURL)
+	if err != nil {
+		t.Fatalf("parse low URL: %v", err)
+	}
+	highURL, err := url.Parse(got.RenditionSources[1].RTSPURL)
+	if err != nil {
+		t.Fatalf("parse high URL: %v", err)
+	}
+
+	if got.RenditionSources[0].Name != "low" || lowURL.Query().Get("resolution") != "640x360" || lowURL.Query().Get("videokeyframeinterval") != "6" || lowURL.Query().Get("videocodec") != "h265" {
+		t.Fatalf("unexpected low source: %+v", got.RenditionSources[0])
+	}
+	if lowURL.Query().Has("h264profile") {
+		t.Fatalf("expected generated H265 URL to omit h264profile: %s", got.RenditionSources[0].RTSPURL)
+	}
+	if got.RenditionSources[1].Name != "high" || highURL.Query().Get("resolution") != "1280x720" || highURL.Query().Get("videokeyframeinterval") != "60" || highURL.Query().Get("videobitratepriority") != "quality" {
+		t.Fatalf("unexpected high source: %+v", got.RenditionSources[1])
 	}
 }

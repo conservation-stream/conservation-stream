@@ -13,9 +13,11 @@ websocket = ["moq-native/websocket"]
 anyhow = { version = "1", features = ["backtrace"] }
 bytes = "1"
 clap = { version = "4", features = ["derive"] }
+futures = "0.3"
 hang = "0.19"
 moq-mux = "0.5"
 moq-native = { version = "0.17", default-features = false, features = ["aws-lc-rs"] }
+retina = "0.4.19"
 rustls = { version = "0.23", features = ["aws-lc-rs"], default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -9,21 +9,23 @@ import (
 )
 
 const (
-	DefaultPayloadMaxSize    = 1188
-	DefaultChannelBufferSize = 512
-	DefaultWHIPTimeout       = 10 * time.Second
+	DefaultPayloadMaxSize     = 1188
+	DefaultChannelBufferSize  = 512
+	DefaultWHIPTimeout        = 10 * time.Second
+	DefaultSourceStallTimeout = 15 * time.Second
 )
 
 var DefaultSTUNServers = []string{"stun:stun.l.google.com:19302"}
 
 type Config struct {
-	RTSPSourceURL     string
-	WHIPPublishURL    string
-	PayloadMaxSize    int
-	ChannelBufferSize int
-	WHIPTimeout       time.Duration
-	STUNServers       []string
-	Logger            Logger
+	RTSPSourceURL      string
+	WHIPPublishURL     string
+	PayloadMaxSize     int
+	ChannelBufferSize  int
+	WHIPTimeout        time.Duration
+	SourceStallTimeout time.Duration
+	STUNServers        []string
+	Logger             Logger
 }
 
 type MediaUnit struct {
@@ -51,6 +53,9 @@ func normalizeConfig(cfg Config) Config {
 	}
 	if normalized.WHIPTimeout == 0 {
 		normalized.WHIPTimeout = DefaultWHIPTimeout
+	}
+	if normalized.SourceStallTimeout == 0 {
+		normalized.SourceStallTimeout = DefaultSourceStallTimeout
 	}
 	if len(normalized.STUNServers) == 0 {
 		normalized.STUNServers = append([]string(nil), DefaultSTUNServers...)

@@ -13,6 +13,9 @@ import (
 type Publisher interface {
 	Open(context.Context, bool, bool) error
 	Publish(*MediaUnit) error
+	// Failed reports asynchronous fatal publisher failures (e.g. the WebRTC
+	// peer connection entering a failed state) that Publish cannot surface.
+	Failed() <-chan error
 	Close() error
 }
 
@@ -22,10 +25,22 @@ type WHIPPublisher struct {
 	videoTrack  *webrtc.TrackLocalStaticRTP
 	audioTrack  *webrtc.TrackLocalStaticRTP
 	resourceURL string
+	failed      chan error
 }
 
 func NewWHIPPublisher(cfg Config) *WHIPPublisher {
-	return &WHIPPublisher{cfg: cfg}
+	return &WHIPPublisher{cfg: cfg, failed: make(chan error, 1)}
+}
+
+func (publisher *WHIPPublisher) Failed() <-chan error {
+	return publisher.failed
+}
+
+func (publisher *WHIPPublisher) reportFailure(err error) {
+	select {
+	case publisher.failed <- err:
+	default:
+	}
 }
 
 func (publisher *WHIPPublisher) Open(ctx context.Context, hasVideo bool, hasAudio bool) error {
@@ -66,6 +81,15 @@ func (publisher *WHIPPublisher) Open(ctx context.Context, hasVideo bool, hasAudi
 		return fmt.Errorf("create peer connection: %w", err)
 	}
 	publisher.peerConn = peerConn
+
+	// pion's TrackLocalStaticRTP.WriteRTP keeps succeeding after the peer
+	// connection dies, so a failed Cloudflare session would otherwise be
+	// forwarded into silently forever.
+	peerConn.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
+			publisher.reportFailure(fmt.Errorf("WebRTC peer connection entered state %s", state))
+		}
+	})
 
 	if hasVideo {
 		videoTrack, err := webrtc.NewTrackLocalStaticRTP(
@@ -176,7 +200,7 @@ func (publisher *WHIPPublisher) Close() error {
 	if publisher.resourceURL != "" {
 		request, err := http.NewRequest(http.MethodDelete, publisher.resourceURL, nil)
 		if err == nil {
-			httpClient := &http.Client{Timeout: 5 * DefaultWHIPTimeout / 2}
+			httpClient := &http.Client{Timeout: publisher.cfg.WHIPTimeout}
 			response, doErr := httpClient.Do(request)
 			if doErr == nil && response != nil {
 				response.Body.Close()
