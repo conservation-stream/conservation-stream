@@ -42,7 +42,7 @@ const getDateTag = (date: Date = new Date()) => {
 };
 
 const ensureRelease = async (repo: string, tag: string, image: string, dateTag: string) => {
-  const notes = [`Published container image \`${image}\`.`, '', `- \`${image}:${tag}\``, `- \`${image}:${dateTag}\``, `- \`${image}:latest\``].join('\n');
+  const notes = [`Published container image \`${image}\`.`, '', `- \`${image}:${dateTag}\``, `- \`${image}:latest\``].join('\n');
 
   try {
     await execFileAsync('gh', ['release', 'view', tag, '--repo', repo], {
@@ -71,7 +71,7 @@ const loginToRegistry = async (actor: string, token: string) => {
   })`docker login ghcr.io --username ${actor} --password-stdin`;
 };
 
-const getTargetTagArgs = (image: string, version: string, dateTag: string) => ['--tag', `${image}:${version}`, '--tag', `${image}:${dateTag}`, '--tag', `${image}:latest`];
+const getTargetTagArgs = (image: string, dateTag: string) => ['--tag', `${image}:${dateTag}`, '--tag', `${image}:latest`];
 
 const getSourceImages = (image: string, builds: Payload[]) => builds.map(build => `${image}:${build.sourceTag}`);
 
@@ -89,9 +89,9 @@ await deploy<Payload, Artifacts>(async env => {
 
   console.log(`Creating multi-arch tags for ${release.image}`);
   console.log(`Architectures: ${release.builds.map(build => build.arch).join(', ')}`);
-  console.log(`Tags: ${env.GITHUB_REF_NAME}, ${dateTag}, latest`);
+  console.log(`Tags: ${dateTag}, latest`);
 
-  await $`docker buildx imagetools create ${getTargetTagArgs(release.image, env.GITHUB_REF_NAME, dateTag)} ${getSourceImages(release.image, release.builds)}`;
+  await $`docker buildx imagetools create ${getTargetTagArgs(release.image, dateTag)} ${getSourceImages(release.image, release.builds)}`;
 
   await ensureRelease(env.GITHUB_REPOSITORY, env.GITHUB_REF_NAME, release.image, dateTag);
 });
